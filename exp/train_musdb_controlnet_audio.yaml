@@ -32,7 +32,7 @@ datamodule:
     chunk_dur: ${chunk_dur}
     shardshuffle: False
 
-  shuffle_size: 24
+  shuffle_size: 1
   batch_size_train: 1
   batch_size_val: 1
   collate_fn:
