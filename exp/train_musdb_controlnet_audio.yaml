@@ -39,14 +39,14 @@ datamodule:
     _target_: main.data.dataset_musdb.collate_fn_conditional
     _partial_: True
   drop_last: True
-  num_workers: 4
-  pin_memory: True
-  persistent_workers: True
+  num_workers: 2
+  pin_memory: False
+  persistent_workers: False
   multiprocessing_context: spawn
 
 callbacks:
   rich_progress_bar:
-    _target_: pytorch_lightning.callbacks.RichProgressBar
+    _target_: pytorch_lightning.callbacks.TQDMProgressBar
 
   model_checkpoint:
     _target_: pytorch_lightning.callbacks.ModelCheckpoint
