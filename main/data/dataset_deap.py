@@ -327,7 +327,7 @@ class DEAPStableAudioDataset(Dataset):
             meta = json.load(f)
         deap_block = meta.get('deap', {}) or {}
         if self.use_prompt:
-            prompt = self.prompt_fn(deap_block, ratings)
+            prompt = _default_prompt(deap_block, ratings)
         else:
             prompt = ''
 
