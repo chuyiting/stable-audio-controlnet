@@ -184,7 +184,7 @@ class DEAPStableAudioDataset(Dataset):
         self.include_peripheral = bool(include_peripheral)
         self.drop_baseline_3s = bool(drop_baseline_3s)
         self.audio_sr = int(audio_sr)
-        self.use_prompt = prompt
+        self.use_prompt = use_prompt
 
         # Directories
         self.dir_audio = os.path.join(self.root, 'audio')
