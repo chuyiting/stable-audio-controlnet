@@ -234,7 +234,7 @@ class DEAPStableAudioDataset(Dataset):
         n_train = max(1, int(round(split_ratio * len(exp_ids)))) 
         train_ids = set(exp_ids[:n_train])
         val_ids = set(exp_ids[n_train:])
-        keep_ids = train_ids if self.split == "train" else val_ids
+        keep_ids = train_ids if split == "train" else val_ids
         self.experiments = {eid: info for eid, info in self.experiments.items() if eid in keep_ids}
 
         if not self.experiments:
