@@ -265,7 +265,7 @@ class DEAPStableAudioDataset(Dataset):
 
             # 2 windows within 60 s
             trial_len_sec = 60.0
-            starts = [0.0, max(0.0, trial_len_sec - chunk)]
+            starts = [0.0, max(0.0, trial_len_sec - chunk_dur_s)]
 
             # For each available experiment id, map to trial index
             for exp_id, blk in self.experiments.items():
