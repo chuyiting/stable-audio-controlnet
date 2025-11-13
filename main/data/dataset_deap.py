@@ -251,7 +251,7 @@ class DEAPStableAudioDataset(Dataset):
         rng = np.random.default_rng(seed)
 
         for dat_path in all_dat:
-            s_code = os.path.basename(dat_path)  # 's01'
+            s_code = os.path.splitext(os.path.basename(dat_path))[0] # 's01'
             subj = _load_subject_dat(dat_path) # dict of two tensors
             data = subj['data']    # (40, 40, 8064)
             labels = subj['labels']  # (40, 4)
