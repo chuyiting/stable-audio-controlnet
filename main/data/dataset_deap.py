@@ -1,225 +1,389 @@
-import pickle
-import random
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+#!/usr/bin/env python3
+"""
+DEAP → Stable Audio Dataset (EEG–Audio alignment)
 
-import torch
-import torch.nn.functional as F
+This module exposes:
+
+    def create_deap_dataset(root_dir: str, **kwargs) -> torch.utils.data.Dataset
+
+It builds a map-style Dataset that:
+- Loads all DEAP subject files from:  <root_dir>/data_preprocessed_python/sXX.dat
+- Loads available audio clips + metadata JSONs from: <root_dir>/audio/<id>.(json|m4a|webm|opus|mp3|wav)
+- Uses the JSON's `deap.Highlight_start` (seconds) to align audio with the 60 s DEAP trial
+- Windows each 60 s trial into chunk(s) (default 47.554 s) with optional hop
+- Time-aligns EEG windows (after optional 3 s baseline drop) with the audio windows
+- Optionally resamples audio to Stable Audio's common SR (default 44_100)
+
+get_item returns a dict with at least these keys:
+  - 'eeg':   FloatTensor (C_eeg, T_eeg)
+  - 'audio': FloatTensor (2, T_audio)
+  - 'prompt': str
+  - 'start_seconds': float  # relative to the 60s trial window
+  - 'total_seconds': float  # usually 60.0
+
+Notes
+-----
+• Trial index mapping: by default, we assume `experiment_id` (1-indexed as in JSON filenames)
+  maps to DEAP trial index `experiment_id - 1`. If your experiment ordering differs,
+  pass a custom `expid_to_trial` mapping dict via the factory.
+• DEAP .dat structure (preprocessed): data shape is (40 trials, 40 channels, 8064 samples),
+  labels shape is (40, 4). The 8064 samples typically cover 3 s baseline + 60 s trial @ 128 Hz.
+
+"""
+
+from __future__ import annotations
+import os
+import glob
+import json
+import math
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Callable
+
+import numpy as np
+
+try:
+    import torch
+    from torch.utils.data import Dataset
+except Exception as e:
+    raise RuntimeError("This dataset requires PyTorch. Please `pip install torch`.\n" + str(e))
+
+
 import torchaudio
-from torchaudio.functional import resample
-from torch.utils.data import Dataset
+import librosa
+import soundfile as sf
+
+
+def _load_subject_dat(dat_path: str) -> Dict[str, np.ndarray]:
+    """
+    Take in preprocessed eeg .dat file
+    Return dictionary of two tensors
+    data: (40, 40, 8064)
+    labels: (40, 4): valence, arousal, dominance, liking
+    """
+    import pickle
+    with open(dat_path, 'rb') as f:
+        obj = pickle.load(f, encoding='latin1') if hasattr(pickle, 'load') else pickle.load(f)
+    if isinstance(obj, dict) and 'data' in obj and 'labels' in obj:
+        return obj
+    raise ValueError(f"Unrecognized DEAP .dat structure at {dat_path}")
+
+
+def _stereo(audio: np.ndarray) -> np.ndarray:
+    if audio.ndim == 1:
+        audio = audio[None, :]
+    if audio.shape[0] == 1:
+        audio = np.repeat(audio, 2, axis=0)
+    return audio
+
+
+def _resample_audio(audio: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
+    if src_sr == dst_sr:
+        return audio
+
+    tensor = torch.from_numpy(audio)
+    out = torchaudio.functional.resample(tensor, src_sr, dst_sr)
+    return out.numpy()
+
+def _read_audio_segment(path: str, start_sec: float, dur_sec: float, target_sr: int,
+                        force_stereo: bool = True) -> np.ndarray:
+    """
+    Load [start_sec, start_sec + dur_sec) from a WAV file using torchaudio,
+    resample to target_sr, return (C, T) float32. Raises on out-of-bounds or short audio.
+    """
+    wav_t, sr = torchaudio.load(path)  # (C, N) float32
+    if force_stereo and wav_t.shape[0] == 1:
+        wav_t = wav_t.expand(2, -1)  # duplicate mono if necessary
+
+    s = int(round(max(0.0, float(start_sec)) * sr))
+    n_src = int(round(float(dur_sec) * sr))
+    n_tgt = int(round(float(dur_sec) * target_sr))
+
+    if s >= wav_t.shape[1]:
+        raise ValueError(
+            f"start_sec={start_sec} (samples {s}) is beyond file length "
+            f"{wav_t.shape[1]/sr:.3f}s for {path}"
+        )
+
+    e = s + n_src
+    window = wav_t[:, s:e]
+
+    if window.shape[1] < n_src:
+        have = window.shape[1] / sr
+        need = n_src / sr
+        raise ValueError(
+            f"Requested duration {dur_sec}s (need {need:.3f}s) exceeds available "
+            f"{have:.3f}s from start={start_sec}s in {path}"
+        )
+
+    # Resample if needed
+    if sr != target_sr:
+        window = torchaudio.functional.resample(window, sr, target_sr)
+
+    # Guard tiny resampler drift by hard trim (never pad)
+    if window.shape[1] < n_tgt:
+        # This should not happen if upstream checks are correct
+        raise RuntimeError(
+            f"Post-resample shorter than expected: got {window.shape[1]} < {n_tgt} samples for {path}"
+        )
+    elif window.shape[1] > n_tgt:
+        window = window[:, :n_tgt]
+
+    return window.numpy().astype(np.float32, copy=False)
+
+
+def _default_prompt(deap_block: Dict[str, Any], ratings: Optional[np.ndarray]) -> str:
+    tag = str(deap_block.get('Lastfm_tag', '') or '').strip()
+    artist = str(deap_block.get('Artist', '') or '').strip()
+    title = str(deap_block.get('Title', '') or '').strip()
+    bits = []
+    if artist or title:
+        bits.append(f"{artist} — {title}".strip(' —'))
+    if tag:
+        bits.append(f"tag: {tag}")
+    if ratings is not None and ratings.size == 4:
+        v, a, d, l = [float(x) for x in ratings]
+        bits.append(f"valence {v:.2f}/9 arousal {a:.2f}/9 dominance {d:.2f}/9 liking {l:.2f}/9")
+    return "; ".join([b for b in bits if b])
 
 
 @dataclass
-class _DEAPSampleDescriptor:
-    """Lightweight handle to a single DEAP trial."""
-
-    subject_id: int
-    trial_index: int
-    eeg_file: str
+class _Idx:
+    subject: str        # 's01'
+    trial: int          # 0..39
+    experiment_id: int  # 1-based matched the xls
+    start_sec: float    # within the 60 s trial (window start)
+    dur_sec: float
+    eeg_slice: Tuple[int, int]
+    highlight_start: float
+    audio_json: str
     audio_path: str
 
 
-class DEAPAudioEEGDataset(Dataset):
-    """
-    Loads aligned audio snippets and EEG control signals derived from the DEAP dataset.
-
-    Args:
-        eeg_root: Directory that contains the preprocessed DEAP `.dat` files (e.g. `data_preprocessed_python`).
-        audio_root: Directory that contains one audio file per trial.
-        audio_template: Filename pattern used to look up audio files. The template receives
-            `subject_id` (1-indexed) and `trial_index` (1-indexed) and must point to a file under `audio_root`.
-        sample_rate: Desired audio sample rate fed to the diffusion model.
-        chunk_dur: Length (in seconds) for both the audio and EEG crops that are returned.
-        eeg_sample_rate: Sampling rate of the EEG signals. Defaults to 128 Hz for DEAP.
-        num_eeg_channels: Number of EEG channels to keep (first 32 for DEAP).
-        baseline_seconds: Amount of baseline data to discard from the beginning of every trial.
-        cache_subjects: When True the full EEG tensor for a subject is kept in memory after the first access.
-            This speeds up iteration at the cost of roughly ~40 MB per subject.
-    """
-
+class DEAPStableAudioDataset(Dataset):
     def __init__(
         self,
-        eeg_root: str,
-        audio_root: str,
-        audio_template: str,
-        sample_rate: int,
-        chunk_dur: float,
-        eeg_sample_rate: int = 128,
-        num_eeg_channels: int = 32,
-        baseline_seconds: float = 3.0,
-        cache_subjects: bool = False,
-        stereo: bool = True,
+        root_dir: str,
+        *,
+        chunk_dur_s: float = 47.55446713, # Windowing
+        # EEG
+        eeg_sr: int = 128,
+        include_peripheral: bool = False,
+        drop_baseline_3s: bool = True,
+        # Audio
+        audio_sr: int = 44_100,
+        seed: int = 42,
+        use_prompt: bool = True,
+        # Train Test split
+        split_ratio: float = 0.9,
+        split: str = 'train' # or val
     ) -> None:
         super().__init__()
-        self.eeg_root = Path(eeg_root)
-        self.audio_root = Path(audio_root)
-        self.audio_template = audio_template
-        self.sample_rate = sample_rate
-        self.chunk_dur = chunk_dur
-        self.eeg_sample_rate = eeg_sample_rate
-        self.num_eeg_channels = num_eeg_channels
-        self.baseline_seconds = baseline_seconds
-        self.cache_subjects = cache_subjects
-        self.stereo = stereo
+        self.root = root_dir
+        self.chunk_dur_s = float(chunk_dur_s)
+        self.eeg_sr = int(eeg_sr)
+        self.include_peripheral = bool(include_peripheral)
+        self.drop_baseline_3s = bool(drop_baseline_3s)
+        self.audio_sr = int(audio_sr)
+        self.use_prompt = prompt
 
-        if not self.eeg_root.exists():
-            raise FileNotFoundError(f"EEG root '{self.eeg_root}' was not found.")
-        if not self.audio_root.exists():
-            raise FileNotFoundError(f"Audio root '{self.audio_root}' was not found.")
+        # Directories
+        self.dir_audio = os.path.join(self.root, 'audio')
+        self.dir_dat = os.path.join(self.root, 'data_preprocessed_python')
+        if not os.path.isdir(self.dir_audio):
+            raise FileNotFoundError(f"Audio folder not found: {self.dir_audio}")
+        if not os.path.isdir(self.dir_dat):
+            raise FileNotFoundError(f"DEAP preprocessed folder not found: {self.dir_dat}")
 
-        self.chunk_samples = int(sample_rate * chunk_dur)
-        self.chunk_eeg_samples = max(1, int(self.eeg_sample_rate * chunk_dur))
-        self.baseline_samples = int(self.baseline_seconds * self.eeg_sample_rate)
+        # Find available audio JSONs (these define the set of usable experiments)
+        json_paths = sorted(glob.glob(os.path.join(self.dir_audio, '*.json')))
+        if not json_paths:
+            raise FileNotFoundError(f"No audio JSONs found in {self.dir_audio}")
 
-        self._subjects = sorted(self.eeg_root.glob("s*.dat"))
-        if not self._subjects:
-            raise RuntimeError(f"No DEAP subject files found under '{self.eeg_root}'.")
+        # Build experiment_id → {json_path, audio_path, deap(meta), highlight_start}
+        self.experiments: Dict[int, Dict[str, Any]] = {}
+        for jp in json_paths:
+            try:
+                with open(jp, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+            except Exception:
+                continue
+            try:
+                exp_id = int(str(meta.get('experiment_id')).strip())
+            except Exception:
+                continue
+            stem = os.path.splitext(jp)[0]
+            a_path = f'{stem}.wav'
+           
+            deap_block = meta.get('deap', {}) or {}
+            hstart = float(deap_block.get('Highlight_start', 0) or 0)
+            self.experiments[exp_id] = {
+                'json': jp,
+                'audio': a_path,
+                'deap': deap_block,
+                'hstart': hstart,
+            }
 
-        self._sample_descriptors: List[_DEAPSampleDescriptor] = []
-        for eeg_path in self._subjects:
-            subject_id = int(eeg_path.stem[1:])
-            with open(eeg_path, "rb") as f:
-                subject_data = pickle.load(f, encoding="latin1")
-            eeg_trials = subject_data["data"]
-            labels = subject_data["labels"]
-            trial_count = eeg_trials.shape[0]
-            for trial_idx in range(trial_count):
-                audio_path = self._format_audio_path(subject_id, trial_idx + 1)
-                if not audio_path.exists():
-                    continue
-                self._sample_descriptors.append(
-                    _DEAPSampleDescriptor(
-                        subject_id=subject_id,
-                        trial_index=trial_idx,
-                        eeg_file=str(eeg_path),
-                        audio_path=str(audio_path),
-                    )
-                )
+        # Train test split based on experiment (audio)
+        assert split in ("train", "val"), "split must be 'train' or 'val'"
+        exp_ids = sorted(self.experiments.keys())
+        if not exp_ids:
+            raise RuntimeError("No usable experiments (json+wav) found.")
 
-        if not self._sample_descriptors:
-            raise RuntimeError(
-                f"No valid DEAP trials found. Ensure audio files exist in '{self.audio_root}'."
-            )
+        rng = np.random.default_rng(seed)     
+        rng.shuffle(exp_ids)
+        n_train = max(1, int(round(split_ratio * len(exp_ids)))) 
+        train_ids = set(exp_ids[:n_train])
+        val_ids = set(exp_ids[n_train:])
+        keep_ids = train_ids if self.split == "train" else val_ids
+        self.experiments = {eid: info for eid, info in self.experiments.items() if eid in keep_ids}
 
-        self._subject_cache: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
+        if not self.experiments:
+            raise RuntimeError("No usable experiments (audio+json) found.")
+
+        # Subject files
+        all_dat = sorted(glob.glob(os.path.join(self.dir_dat, 's*.dat')))
+        if not all_dat:
+            raise FileNotFoundError(f"No subject .dat files in {self.dir_dat}")
+
+        # Build index list
+        self._subject_cache: Dict[str, Dict[str, np.ndarray]] = {}
+        self._indices: List[_Idx] = []
+        rng = np.random.default_rng(seed)
+
+        for dat_path in all_dat:
+            s_code = os.path.basename(dat_path)  # 's01'
+            subj = _load_subject_dat(dat_path) # dict of two tensors
+            data = subj['data']    # (40, 40, 8064)
+            labels = subj['labels']  # (40, 4)
+
+            total_samples = int(data.shape[-1])
+            # DEAP: 3s baseline + 60 s trial @ 128 Hz → 3*128 + 60*128 = 8064
+            if self.drop_baseline_3s and total_samples >= int(63 * self.eeg_sr):
+                trial_offset_sec = 3.0
+            else:
+                trial_offset_sec = 0.0
+
+            # 2 windows within 60 s
+            trial_len_sec = 60.0
+            starts = [0.0, max(0.0, trial_len_sec - chunk)]
+
+            # For each available experiment id, map to trial index
+            for exp_id, blk in self.experiments.items():
+                trial = exp_id - 1 # exp is 1-indexed; trial is 0-indexed
+                if not (0 <= trial < data.shape[0]):
+                    continue 
+
+                for st in starts:
+                    eeg_start = int((trial_offset_sec + st) * self.eeg_sr)
+                    eeg_end = eeg_start + int(self.chunk_dur_s * self.eeg_sr)
+                    max_end = int(trial_offset_sec * self.eeg_sr) + int(trial_len_sec * self.eeg_sr)
+                    if eeg_end > max_end: # handle precision error
+                        eeg_end = max_end
+
+                    self._indices.append(_Idx(
+                        subject=s_code, # s01 
+                        trial=trial, 
+                        experiment_id=exp_id,
+                        start_sec=st,
+                        dur_sec=self.chunk_dur_s,
+                        eeg_slice=(eeg_start, eeg_end),
+                        highlight_start=float(blk['hstart']),
+                        audio_json=blk['json'], # json path
+                        audio_path=blk['audio'], # audio path
+                    ))
+
+        rng.shuffle(self._indices)
 
     def __len__(self) -> int:
-        return len(self._sample_descriptors)
+        return len(self._indices)
 
-    def __getitem__(self, index: int):
-        desc = self._sample_descriptors[index]
-        eeg_trials, label_tensor = self._load_subject_trials(desc.eeg_file)
-        eeg = eeg_trials[desc.trial_index]
-        labels = label_tensor[desc.trial_index]
+    def _get_subject(self, s_code: str) -> Dict[str, np.ndarray]:
+        if s_code not in self._subject_cache:
+            path = os.path.join(self.dir_dat, f"{s_code}.dat")
+            self._subject_cache[s_code] = _load_subject_dat(path)
+        return self._subject_cache[s_code]
 
-        audio, audio_sr = torchaudio.load(desc.audio_path)
-        if audio_sr != self.sample_rate:
-            audio = resample(audio, orig_freq=audio_sr, new_freq=self.sample_rate)
-        if self.stereo and audio.shape[0] == 1:
-            audio = audio.repeat(2, 1)
-        if audio.shape[0] > 2:
-            audio = audio[:2]
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        x = self._indices[idx]
+        subj = self._get_subject(x.subject)
+        data = subj['data']    # (40, 40, T)
+        labels = subj['labels']  # (40, 4)
 
-        audio_chunk, start_seconds = self._sample_audio_chunk(audio, self.sample_rate)
-        eeg_chunk = self._sample_eeg_chunk(eeg, start_seconds)
+        # EEG channels: first 32 are EEG, remaining 8 are peripheral
+        ch = 40 if self.include_peripheral else 32
+        trial_arr = data[x.trial][:ch]  # (C, T)
+        s, e = x.eeg_slice
+        eeg = trial_arr[:, s:e]
+        eeg_t = torch.from_numpy(eeg.astype(np.float32))  # (C, T_eeg)
 
-        prompt = (
-            f"subject: s{desc.subject_id:02d}; trial: {desc.trial_index + 1:02d}; "
-            f"valence: {labels[0]:.2f}; arousal: {labels[1]:.2f}; "
-            f"dominance: {labels[2]:.2f}; liking: {labels[3]:.2f}"
-        )
+        # Audio window aligned with EEG window: start at highlight_start + start_sec
+        a_start = x.highlight_start + x.start_sec
+        audio_np = _read_audio_segment(x.audio_path, start_sec=a_start, dur_sec=x.dur_sec, target_sr=self.audio_sr)
+        audio_t = torch.from_numpy(audio_np.astype(np.float32))  # (2, T_audio)
 
-        total_seconds = audio_chunk.shape[-1] / self.sample_rate
-        return audio_chunk, eeg_chunk, prompt, start_seconds, total_seconds
-
-    def _format_audio_path(self, subject_id: int, trial_index_one_based: int) -> Path:
-        filename = self.audio_template.format(subject_id=subject_id, trial_index=trial_index_one_based)
-        return self.audio_root / filename
-
-    def _load_subject_trials(self, eeg_file: str) -> Tuple[torch.Tensor, torch.Tensor]:
-        if self.cache_subjects and eeg_file in self._subject_cache:
-            return self._subject_cache[eeg_file]
-
-        with open(eeg_file, "rb") as f:
-            subject_data = pickle.load(f, encoding="latin1")
-        eeg_trials = torch.tensor(
-            subject_data["data"][:, : self.num_eeg_channels, self.baseline_samples :],
-            dtype=torch.float32,
-        )
-        labels = torch.tensor(subject_data["labels"], dtype=torch.float32)
-
-        if self.cache_subjects:
-            self._subject_cache[eeg_file] = (eeg_trials, labels)
-        return eeg_trials, labels
-
-    def _sample_audio_chunk(self, audio: torch.Tensor, sample_rate: int) -> Tuple[torch.Tensor, float]:
-        total_samples = audio.shape[-1]
-        if total_samples >= self.chunk_samples:
-            max_start = total_samples - self.chunk_samples
-            start = random.randint(0, max_start) if max_start > 0 else 0
-            chunk = audio[:, start : start + self.chunk_samples]
-            start_seconds = start / sample_rate
+        # Prompt: lastfm tag + artist/title + subject-specific labels for this trial
+        ratings = labels[x.trial].astype(np.float32) if labels is not None else None
+        with open(x.audio_json, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+        deap_block = meta.get('deap', {}) or {}
+        if self.use_prompt:
+            prompt = self.prompt_fn(deap_block, ratings)
         else:
-            pad_amount = self.chunk_samples - total_samples
-            chunk = F.pad(audio, (0, pad_amount))
-            start_seconds = 0.0
-        return chunk, start_seconds
+            prompt = ''
 
-    def _sample_eeg_chunk(self, eeg: torch.Tensor, start_seconds: float) -> torch.Tensor:
-        start = int(start_seconds * self.eeg_sample_rate)
-        end = start + self.chunk_eeg_samples
-        if eeg.shape[-1] >= end:
-            chunk = eeg[:, start:end]
-        else:
-            chunk = F.pad(eeg[:, start:], (0, max(0, self.chunk_eeg_samples - eeg[:, start:].shape[-1])))
-        return chunk
+        return {
+            'eeg': eeg_t,
+            'audio': audio_t,
+            'prompt': prompt,
+            # TODO check how is start and total seconds are used!!
+            'start_seconds': float(x.start_sec),
+            'total_seconds': float{self.chunk_dur_s},
+        }
+
 
 
 def create_deap_dataset(
-    eeg_root: str,
-    audio_root: str,
-    sample_rate: int,
-    chunk_dur: float,
-    audio_template: str = "s{subject_id:02d}_t{trial_index:02d}.wav",
-    eeg_sample_rate: int = 128,
-    num_eeg_channels: int = 32,
-    baseline_seconds: float = 3.0,
-    cache_subjects: bool = False,
-    stereo: bool = True,
-) -> DEAPAudioEEGDataset:
-    """
-    Hydra-friendly factory that instantiates :class:`DEAPAudioEEGDataset`.
-    """
-    return DEAPAudioEEGDataset(
-        eeg_root=eeg_root,
-        audio_root=audio_root,
-        audio_template=audio_template,
-        sample_rate=sample_rate,
-        chunk_dur=chunk_dur,
-        eeg_sample_rate=eeg_sample_rate,
-        num_eeg_channels=num_eeg_channels,
-        baseline_seconds=baseline_seconds,
-        cache_subjects=cache_subjects,
-        stereo=stereo,
+    root_dir: str,
+    *,
+    chunk_dur_s: float = 47.55446713,
+    eeg_sr: int = 128,
+    include_peripheral: bool = False,
+    drop_baseline_3s: bool = True,
+    audio_sr: int = 44100,
+    seed: int = 42,
+    use_prompt: bool = True,
+    split_ratio: float = 0.9,
+    split: str = 'train' # or val
+) -> DEAPStableAudioDataset:
+    return DEAPStableAudioDataset(
+        root_dir,
+        chunk_dur_s=chunk_dur_s,
+        eeg_sr=eeg_sr,
+        include_peripheral=include_peripheral,
+        drop_baseline_3s=drop_baseline_3s,
+        audio_sr=audio_sr,
+        seed=seed,
+        use_prompt=use_prompt,
+        split_ratio=split_ratio,
+        split=split
     )
 
+   
+# Quick test
 
-def collate_fn(samples: Sequence[Tuple[torch.Tensor, torch.Tensor, str, float, float]]):
-    """
-    Collates variable-length EEG tensors by zero padding and stacks audio/control batches.
-    """
-    audio, eeg, prompts, start_seconds, total_seconds = zip(*samples)
-    audio_batch = torch.stack(audio)
+if __name__ == '__main__':
+    root = '/app/mnt/MusicEEGen/data/deap/deap-dataset'
 
-    eeg_max_len = max(t.shape[-1] for t in eeg)
-    eeg_batch = torch.stack([F.pad(t, (0, eeg_max_len - t.shape[-1])) for t in eeg])
+    ds = create_deap_dataset(root, split='train')
 
-    return (
-        audio_batch,
-        eeg_batch,
-        list(prompts),
-        list(start_seconds),
-        list(total_seconds),
-    )
+    print(f"Dataset length: {len(ds)}")
+    if len(ds) > 0:
+        sample = ds[0]
+        eeg = sample['eeg']
+        audio = sample['audio']
+        print("First item summary →")
+        print(f"  subject/trial/exp: {sample['subject']}/{sample['trial']}/{sample['experiment_id']}")
+        print(f"  eeg:   shape={tuple(eeg.shape)}, sr={ds.eeg_sr}")
+        print(f"  audio: shape={tuple(audio.shape)}, sr={ds.audio_sr}")
+        print(f"  start_seconds={sample['start_seconds']} total_seconds={sample['total_seconds']}")
+        print(f"  prompt=\"{sample['prompt']}\"")
