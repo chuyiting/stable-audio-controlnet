@@ -382,7 +382,6 @@ if __name__ == '__main__':
         eeg = sample['eeg']
         audio = sample['audio']
         print("First item summary →")
-        print(f"  subject/trial/exp: {sample['subject']}/{sample['trial']}/{sample['experiment_id']}")
         print(f"  eeg:   shape={tuple(eeg.shape)}, sr={ds.eeg_sr}")
         print(f"  audio: shape={tuple(audio.shape)}, sr={ds.audio_sr}")
         print(f"  start_seconds={sample['start_seconds']} total_seconds={sample['total_seconds']}")
