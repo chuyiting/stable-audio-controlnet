@@ -337,7 +337,7 @@ class DEAPStableAudioDataset(Dataset):
             'prompt': prompt,
             # TODO check how is start and total seconds are used!!
             'start_seconds': float(x.start_sec),
-            'total_seconds': float{self.chunk_dur_s},
+            'total_seconds': float(self.chunk_dur_s),
         }
 
 
