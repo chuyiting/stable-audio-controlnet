@@ -92,8 +92,6 @@ class Model(pl.LightningModule):
     def step(self, batch):
         eeg, x_audio, prompts, start_seconds, total_seconds = self._unpack_batch(batch)
         device = self.device
-        print(f"x shape: {x.shape}")
-        print(f"total seconds: {total_seconds}")
 
         # encode to diffusion latent
         diffusion_input = self.model.pretransform.encode(x_audio)  # shape (B, ...)
