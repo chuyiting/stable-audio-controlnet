@@ -68,6 +68,8 @@ class Model(pl.LightningModule):
 
     def step(self, batch):
         x, y, prompts, start_seconds, total_seconds = batch
+        print(f"x shape: {x.shape}")
+        print(f"total seconds: {total_seconds}")
 
         diffusion_input = self.model.pretransform.encode(x)
 
@@ -98,7 +100,7 @@ class Model(pl.LightningModule):
                                                           "seconds_total": total_seconds[i],
                                                           "audio": y[i:i+1]} for i in range(y.shape[0])], 
                                                           device=self.device)
-        print(f"x shape: {noised_inputs.shape}")
+        print(f"x latent shape: {noised_inputs.shape}")
         print(f"audio shape {cond['audio'][0].shape}")
 
         output = self.model(x=noised_inputs,
