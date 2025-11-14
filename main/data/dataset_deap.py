@@ -165,7 +165,7 @@ def _default_prompt(deap_block: Dict[str, Any], ratings: Optional[np.ndarray]) -
     title = str(deap_block.get('Title', '') or '').strip()
     bits = []
     if artist or title or tag:
-        bits.append(f"Tag: {tag} - Artiest: {artist} — Title: {title}".strip(' —'))
+        bits.append(f"Tag: {tag} - Artist: {artist} — Title: {title}".strip(' —'))
     if ratings is not None and ratings.size == 4:
         v, a, d, l = [float(x) for x in ratings]
         bits.append(f"valence {v:.2f}/9 arousal {a:.2f}/9 dominance {d:.2f}/9 liking {l:.2f}/9")
