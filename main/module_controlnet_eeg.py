@@ -11,7 +11,7 @@ from stable_audio_tools.inference.generation import generate_diffusion_cond
 from main.controlnet.pretrained import get_pretrained_controlnet_model
 from stable_audio_tools.inference.sampling import get_alphas_sigmas
 from torch.utils.data import DataLoader
-from main.utils import log_wandb_audio_batch, log_wandb_audio_spectrogram
+from main.utils import log_wandb_audio_batch, log_wandb_audio_spectrogram,  log_wandb_eeg_batch
 
 
 
@@ -286,14 +286,7 @@ class SampleLogger(Callback):
 
 
         for i in range(num_samples):
-            log_wandb_audio_batch(
-                logger=wandb_logger,
-                id=f"true_{i}",
-                samples=eeg[i:i+1],
-                sampling_rate=pl_module.sample_rate,
-                caption=f"Prompt: {prompts[i]}",
-            )
-            log_wandb_audio_spectrogram(
+            log_wandb_eeg_batch(
                 logger=wandb_logger,
                 id=f"true_{i}",
                 samples=eeg[i:i+1],
@@ -326,21 +319,6 @@ class SampleLogger(Callback):
                 log_wandb_audio_spectrogram(
                     logger=wandb_logger,
                     id=f"sample_x_{i}",
-                    samples=output[i:i + 1],
-                    sampling_rate=pl_module.sample_rate,
-                    caption=f"Sampled in {steps} steps.",
-                )
-
-                log_wandb_audio_batch(
-                    logger=wandb_logger,
-                    id=f"sample_sum_{i}",
-                    samples=output[i:i + 1],
-                    sampling_rate=pl_module.sample_rate,
-                    caption=f"Sampled in {steps} steps.",
-                )
-                log_wandb_audio_spectrogram(
-                    logger=wandb_logger,
-                    id=f"sample_sum_{i}",
                     samples=output[i:i + 1],
                     sampling_rate=pl_module.sample_rate,
                     caption=f"Sampled in {steps} steps.",
