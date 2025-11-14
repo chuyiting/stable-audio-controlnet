@@ -30,7 +30,7 @@ class EEGConditioner(Conditioner):
 
     def forward(self, x: torch.Tensor, device=None):
         """
-        x: tensor (B, 32, T_eeg)
+        x: list tensors (32, T_eeg) where the length is B
 
         Returns:
             encoded: (B, output_dim, 1)
@@ -39,10 +39,12 @@ class EEGConditioner(Conditioner):
         if device is not None:
             x = x.to(device)
 
-        B, C, T = x.shape
+        B = len(x)
+        C, T = x[0].shape
         assert C == self.eeg_dim, f"Expected {self.eeg_dim} EEG channels, got {C}"
         assert T == self.eeg_t, f"Expected T_eeg={self.eeg_t}, got {T}"
 
+        x = torch.stack(x, dim=0)
         x_flat = x.reshape(B, C * T)
         encoded = self.projector(x_flat)
         encoded = encoded.unsqueeze(-1)

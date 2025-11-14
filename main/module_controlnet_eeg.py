@@ -27,7 +27,8 @@ class Model(pl.LightningModule):
         lr_eps: float,
         lr_weight_decay: float,
         depth_factor: float,
-        cfg_dropout_prob: float
+        cfg_dropout_prob: float,
+        eeg_ckpt_path: str
     ):
         super().__init__()
         self.lr = lr
@@ -40,7 +41,8 @@ class Model(pl.LightningModule):
         self.diffusion_objective = "v"
         model, model_config = get_pretrained_controlnet_model("stabilityai/stable-audio-open-1.0",
                                                               controlnet_types=["eeg"],
-                                                              depth_factor=depth_factor)
+                                                              depth_factor=depth_factor,
+                                                              eeg_ckpt_path=eeg_ckpt_path)
         self.model_config = model_config
         self.sample_size = model_config["sample_size"]
         self.sample_rate = model_config["sample_rate"]
