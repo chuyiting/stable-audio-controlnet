@@ -56,11 +56,18 @@ class Model(pl.LightningModule):
         self.model.pretransform.requires_grad_(False)
         self.model.pretransform.eval()
 
+        # controlnet and eeg projector
+        for p in model.conditioner.conditioners["eeg"].projector.parameters():
+            p.requires_grad = True
+        
+        model.conditioner.conditioners["eeg"].projector.train()
 
     def configure_optimizers(self):
-        params = list(self.model.model.controlnet.parameters())
+        train_params = []
+        train_params += list(model.model.controlnet.parameters())
+        train_params += list(model.conditioner.conditioners["eeg"].projector.parameters())
         optimizer = torch.optim.AdamW(
-            params,
+            train_params,
             lr=self.lr,
             betas=(self.lr_beta1, self.lr_beta2),
             eps=self.lr_eps,
@@ -128,9 +135,6 @@ class Model(pl.LightningModule):
             }
             cond_items.append(item)
         cond = self.model.conditioner(cond_items, device=device)
-
-        print(f"x latent shape: {noised_inputs.shape}")
-        print(f"eeg shape {cond['eeg'][0].shape}")
 
         # forward
         output = self.model(

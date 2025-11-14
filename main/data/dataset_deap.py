@@ -21,6 +21,61 @@ import librosa
 import soundfile as sf
 import math
 
+"""
+preprocessed DEAP channels 
+source: https://www.eecs.qmul.ac.uk/mmv/datasets/deap/readme.html
+"""
+DEAP_CHANNELS = [
+    "Fp1", "AF3", "F3", "F7", "FC5", "FC1", "C3", "T7",
+    "CP5", "CP1", "P3", "P7", "PO3", "O1", "Oz", "Pz",
+    "Fp2", "AF4", "Fz", "F4", "F8", "FC6", "FC2", "Cz",
+    "C4", "T8", "CP6", "CP2", "P4", "P8", "PO4", "O2",
+]
+
+"""
+BIOT channels
+https://github.com/ycq091044/BIOT/blob/main/datasets/TUAB/process.py
+"""
+BIOT_PAIRS = [
+    "FP1-F7", "F7-T7", "T7-P7", "P7-O1",
+    "FP2-F8", "F8-T8", "T8-P8", "P8-O2",
+    "FP1-F3", "F3-C3", "C3-P3", "P3-O1",
+    "FP2-F4", "F4-C4", "C4-P4", "P4-O2",
+]
+
+DEAP_IDX = {ch.upper(): i for i, ch in enumerate(DEAP_CHANNELS)}
+
+def _deap_to_biot_bipolar(eeg):
+    """
+    Convert DEAP 32-channel EEG to BIOT 16-channel bipolar montage.
+
+    Parameters:
+    eeg : torch.Tensor
+        Shape (32, T) or (B, 32, T).
+
+    Returns:
+    eeg_bipolar : 
+        Shape (16, T) or (B, 16, T).
+    """
+
+    data = eeg
+    assert data.shape[-2] == 32, f"Expected channels dim (-2) = 32, got {data.shape}"
+
+    out_shape = list(data.shape)
+    out_shape[-2] = len(BIOT_PAIRS)  # 16
+    eeg_bipolar = data.new_zeros(*out_shape)
+
+    for k, pair in enumerate(BIOT_PAIRS):
+        a_name, b_name = pair.split("-")
+        a_idx = DEAP_IDX[a_name.upper()]
+        b_idx = DEAP_IDX[b_name.upper()]
+
+        a_sig = data.select(dim=-2, index=a_idx)
+        b_sig = data.select(dim=-2, index=b_idx)
+
+        eeg_bipolar[..., k, :] = a_sig - b_sig
+
+    return eeg_bipolar
 
 def _load_subject_dat(dat_path: str) -> Dict[str, np.ndarray]:
     """
@@ -140,6 +195,7 @@ class DEAPStableAudioDataset(Dataset):
         eeg_sr: int = 128,
         include_peripheral: bool = False,
         drop_baseline_3s: bool = True,
+        use_biot_ch: bool=True,
         # Audio
         audio_sr: int = 44_100,
         seed: int = 42,
@@ -156,6 +212,7 @@ class DEAPStableAudioDataset(Dataset):
         self.drop_baseline_3s = bool(drop_baseline_3s)
         self.audio_sr = int(audio_sr)
         self.use_prompt = use_prompt
+        self.use_biot_ch = use_biot_ch
 
         # Directories
         self.dir_audio = os.path.join(self.root, 'audio')
@@ -294,6 +351,8 @@ class DEAPStableAudioDataset(Dataset):
         s, e = x.eeg_slice
         eeg = trial_arr[:, s:e]
         eeg_t = torch.from_numpy(eeg.astype(np.float32))  # (C, T_eeg)
+        if self.use_biot_ch:
+            eeg_t = _deap_to_biot_bipolar(eeg_t)
 
         # Audio window aligned with EEG window: start at highlight_start + start_sec
         a_start = x.highlight_start + x.start_sec
