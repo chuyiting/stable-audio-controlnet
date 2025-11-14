@@ -36,15 +36,14 @@ class EEGConditioner(Conditioner):
             encoded: (B, output_dim, 1)
             mask:    (B,) all ones (not really used, but matches (tensor, mask) API)
         """
-        if device is not None:
-            x = x.to(device)
-
         B = len(x)
         C, T = x[0].shape
         assert C == self.eeg_dim, f"Expected {self.eeg_dim} EEG channels, got {C}"
         assert T == self.eeg_t, f"Expected T_eeg={self.eeg_t}, got {T}"
 
         x = torch.stack(x, dim=0)
+        if device is not None:
+            x = x.to(device)
         x_flat = x.reshape(B, C * T)
         encoded = self.projector(x_flat)
         encoded = encoded.unsqueeze(-1)
