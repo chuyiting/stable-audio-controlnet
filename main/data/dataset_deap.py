@@ -54,8 +54,8 @@ def _resample_audio(audio: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
     return out.numpy()
 
 def _get_audio_len_sec(path: str) -> float:
-    info = torchaudio.info(path)
-    return info.num_frames / info.sample_rate
+    info = sf.info(path)
+    return info.frames / info.samplerate
 
 def _read_audio_segment(path: str, start_sec: float, dur_sec: float, target_sr: int,
                         force_stereo: bool = True) -> np.ndarray:
