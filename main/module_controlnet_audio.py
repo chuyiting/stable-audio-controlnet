@@ -97,7 +97,7 @@ class Model(pl.LightningModule):
                                                           "seconds_start": start_seconds[i],
                                                           "seconds_total": total_seconds[i],
                                                           "audio": y[i:i+1]} for i in range(y.shape[0])])
-        print(f'audio shape {cond['audio'].shape}')
+        print(f"audio shape {cond['audio'].shape}")
 
         output = self.model(x=noised_inputs,
                             t=t.to(self.device),
