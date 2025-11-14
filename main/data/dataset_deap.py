@@ -353,7 +353,7 @@ if __name__ == '__main__':
     ds = create_deap_dataset(root, split='train')
 
     print(f"Dataset length: {len(ds)}")
-    int top_n = 5
+    top_n = 5
     for i in range(top_n):
         print(ds, i)
     
