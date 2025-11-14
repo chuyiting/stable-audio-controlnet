@@ -171,7 +171,6 @@ class WebDatasetDatamodule(pl.LightningDataModule):
         batch_size_val: int,
         num_workers: int,
         pin_memory: bool,
-        shuffle_size: int,
         collate_fn = None,
         drop_last: bool = True,
         persistent_workers: bool = True,
@@ -183,12 +182,9 @@ class WebDatasetDatamodule(pl.LightningDataModule):
         self.batch_size_val = batch_size_val
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.shuffle_size = shuffle_size
         self.drop_last = drop_last
         self.persistent_workers = persistent_workers
         self.multiprocessing_context = multiprocessing_context
-
-        train_dataset = train_dataset.shuffle(self.shuffle_size)
 
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
