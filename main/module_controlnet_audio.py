@@ -96,13 +96,13 @@ class Model(pl.LightningModule):
         cond = self.model.conditioner([{"prompt": prompts[i],
                                                           "seconds_start": start_seconds[i],
                                                           "seconds_total": total_seconds[i],
-                                                          "audio": y[i:i+1]} for i in range(y.shape[0])])
+                                                          "audio": y[i:i+1]} for i in range(y.shape[0])], 
+                                                          device=self.device)
         print(f"audio shape {cond['audio'].shape}")
 
         output = self.model(x=noised_inputs,
                             t=t.to(self.device),
                             cond=cond,
-                            device=self.device,
                             cfg_dropout_prob=self.cfg_dropout_prob)
         loss = torch.nn.functional.mse_loss(output, targets).mean()
         return loss
