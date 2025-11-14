@@ -134,7 +134,7 @@ class EEGConditioner(nn.Module):
         # Output: (B, n_channels, T_eeg)
         if isinstance(x, list):
             # Stack list of tensors into batch
-            x = torch.stack(x, dim=0)  # (B, n_channels, T_eeg)
+            x = torch.cat(x, dim=0)  # (B, n_channels, T_eeg)
         elif isinstance(x, torch.Tensor):
             # If already a tensor, ensure it's the right shape
             if x.dim() == 2:
