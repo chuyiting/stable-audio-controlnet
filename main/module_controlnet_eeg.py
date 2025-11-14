@@ -47,7 +47,7 @@ class Model(pl.LightningModule):
 
         self.cfg_dropout_prob = cfg_dropout_prob
 
-        self.device = device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = model
         self.model.model.model.requires_grad_(False)
         self.model.conditioner.requires_grad_(False)
