@@ -19,6 +19,7 @@ except Exception as e:
 import torchaudio
 import librosa
 import soundfile as sf
+import math
 
 
 def _load_subject_dat(dat_path: str) -> Dict[str, np.ndarray]:
@@ -231,7 +232,7 @@ class DEAPStableAudioDataset(Dataset):
 
             # 2 windows within 60 s
             trial_len_sec = 60.0
-            starts = [0.0, max(0.0, trial_len_sec - chunk_dur_s)]
+            starts = [0.0, max(0.0, math.floor(trial_len_sec - chunk_dur_s))]
 
             # For each available experiment id, map to trial index
             for exp_id, blk in self.experiments.items():
