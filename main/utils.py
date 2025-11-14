@@ -18,6 +18,7 @@ from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Callback
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
+import matplotlib.pyplot as plt
 
 
 def stringify(obj: Union[Mapping, List, Tuple, Any]):
