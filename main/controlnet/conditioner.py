@@ -11,7 +11,7 @@ class EEGConditioner(Conditioner):
         # TODO add BIOT 
         self.encoder = None
 
-    def forward(self, x, device=None) -> tp.Any:
+    def forward(self, x, device=None):
         '''
         Return encoded result and mask
         x: tensor (B, 32, T_eeg)
