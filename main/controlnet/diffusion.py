@@ -194,7 +194,7 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
             # Assumes that the global conditioning inputs are of shape (batch, channels)
             global_conds = []
             for key in self.global_cond_ids:
-                global_cond_input = conditioning_tensors[key][0]
+                global_cond_input = conditioning_tensors[key][0] # tensor [1] is mask
 
                 global_conds.append(global_cond_input)
 

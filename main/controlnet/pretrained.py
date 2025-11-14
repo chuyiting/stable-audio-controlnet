@@ -7,6 +7,7 @@ from stable_audio_tools.inference.sampling import get_alphas_sigmas
 from stable_audio_tools.models.utils import load_ckpt_state_dict
 
 from main.controlnet.factory import create_model_from_config
+from main.controlnet.conditoner import EEGConditioner
 
 from huggingface_hub import hf_hub_download
 
@@ -33,8 +34,26 @@ def get_pretrained_controlnet_model(name: str,
                                                        "pretransform_config": model_config["model"]["pretransform"]}}
             model_config["model"]['conditioning']['configs'].append(controlnet_conditioner_config)
             model_config["model"]["diffusion"]['controlnet_cond_ids'].append(controlnet_type)
+        
+        if controlnet_type == 'eeg':
+            # EEG conditioner does not exist, we need to manually create and add to it
+            controlnet_conditioner_config = {"id": controlnet_type,
+                                             "type": "number", # just placeholder, will replace later
+                                             "config": {}} # dont care
+            model_config["model"]['conditioning']['configs'].append(controlnet_conditioner_config)
+            model_config["model"]["diffusion"]['controlnet_cond_ids'].append(controlnet_type)
+            # TODO global conditioning and cross attention conditioning
+            # model_config['model']['diffusion']['cross_attention_cond_ids'].append(controlnet_type)
+            # model_config['model']['diffusion']['global_cond_ids'].append(controlnet_type)
 
     model = create_model_from_config(model_config)
+
+    # EEG conditioner does not exist, we need to manually create and add to it
+    if 'eeg' in controlnet_types:
+        # TODO 
+        eeg_conditioner = EEGConditioner(0, '')
+        model.conditioner.conditioners['eeg'] = eeg_conditioner
+
 
     # Try to download the model.safetensors file first, if it doesn't exist, download the model.ckpt file
     try:

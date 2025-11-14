@@ -39,7 +39,7 @@ class Model(pl.LightningModule):
         self.timestep_sampler = "logit_normal"
         self.diffusion_objective = "v"
         model, model_config = get_pretrained_controlnet_model("stabilityai/stable-audio-open-1.0",
-                                                              controlnet_types=["audio"],
+                                                              controlnet_types=["eeg"],
                                                               depth_factor=depth_factor)
         self.model_config = model_config
         self.sample_size = model_config["sample_size"]
@@ -47,6 +47,7 @@ class Model(pl.LightningModule):
 
         self.cfg_dropout_prob = cfg_dropout_prob
 
+        self.device = device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = model
         self.model.model.model.requires_grad_(False)
         self.model.conditioner.requires_grad_(False)
@@ -66,54 +67,97 @@ class Model(pl.LightningModule):
         )
         return optimizer
 
-    def step(self, batch):
-        x, y, prompts, start_seconds, total_seconds = batch
+    def _unpack_batch(self, batch):
+        x_audio = batch["audio"]          # tensor (B, 2, Ta) sr = 44100
+        prompts = batch["prompt"]         # List[str] (default collate)
+        start_seconds = batch["start_seconds"] # (B,)
+        total_seconds = batch["total_seconds"] # (B,)
+        eeg = batch['eeg'] # tensor (B, 32, Teeg) sr=128
 
-        diffusion_input = self.model.pretransform.encode(x)
+        device = self.device
+        start_seconds = start_seconds.to(device)
+        total_seconds = total_seconds.to(device)
 
-        # if self.timestep_sampler == "uniform":
-        #     # Draw uniformly distributed continuous timesteps
-        #     # t = self.rng.draw(x.shape[0])[:, 0]
+        x_audio = x_audio.to(device)
+        eeg = eeg.to(device)
+
+        return eeg, x_audio, prompts, start_seconds, total_seconds
+
+    def _sample_timesteps(self, batch_size: int, device: torch.device):
         if self.timestep_sampler == "logit_normal":
-            t = torch.sigmoid(torch.randn(x.shape[0]))
-        else:
-            raise ValueError(f"Unknown time step sampler: {self.timestep_sampler}")
+            return torch.sigmoid(torch.randn(batch_size, device=device))
+        raise ValueError(f"Unknown time step sampler: {self.timestep_sampler}")
 
-        if self.diffusion_objective == "v":
-            alphas, sigmas = get_alphas_sigmas(t)
-        else:
-            raise ValueError("Diffusion objective not supported")
+    def step(self, batch):
+        eeg, x_audio, prompts, start_seconds, total_seconds = self._unpack_batch(batch)
+        device = self.device
 
-        alphas = alphas[:, None, None].to(self.device)
-        sigmas = sigmas[:, None, None].to(self.device)
+        # encode to diffusion latent
+        diffusion_input = self.model.pretransform.encode(x_audio)  # shape (B, ...)
 
-        noise = torch.randn_like(diffusion_input).to(self.device)
+        # timesteps
+        t = self._sample_timesteps(diffusion_input.shape[0], device)
+
+        # alphas/sigmas
+        if self.diffusion_objective != "v":
+            raise ValueError("Diffusion objective not supported (expected 'v').")
+        alphas, sigmas = get_alphas_sigmas(t)  # (B,)
+
+        # broadcast to latent shape (handles 1D/2D/3D etc.)
+        while alphas.ndim < diffusion_input.ndim:
+            alphas = alphas.unsqueeze(-1)
+            sigmas = sigmas.unsqueeze(-1)
+        alphas = alphas.to(device)
+        sigmas = sigmas.to(device)
+
+        # noise/noised input and v-target
+        noise = torch.randn_like(diffusion_input, device=device)
         noised_inputs = diffusion_input * alphas + noise * sigmas
+        targets = noise * alphas - diffusion_input * sigmas  # v-prediction target
 
-        if self.diffusion_objective == "v":
-            targets = noise * alphas - diffusion_input * sigmas
+        # conditioner items per-sample
+        B = diffusion_input.shape[0]
+        cond_items = []
+        for i in range(B):
+            item = {
+                "prompt": prompts[i] if isinstance(prompts, list) else (prompts[i].item() if torch.is_tensor(prompts) else prompts[i]),
+                "seconds_start": start_seconds[i].item() if start_seconds.ndim > 0 else float(start_seconds),
+                "seconds_total": total_seconds[i].item() if total_seconds.ndim > 0 else float(total_seconds),
+                "eeg": eeg[i:i+1]
+            }
+            cond_items.append(item)
 
+        cond = self.model.conditioner(cond_items, device=device)
 
-        output = self.model(x=noised_inputs,
-                            t=t.to(self.device),
-                            cond=self.model.conditioner([{"prompt": prompts[i],
-                                                          "seconds_start": start_seconds[i],
-                                                          "seconds_total": total_seconds[i],
-                                                          "audio": y[i:i+1]} for i in range(y.shape[0])],
-                            device=self.device),
-                            cfg_dropout_prob=self.cfg_dropout_prob)
+        # forward
+        output = self.model(
+            x=noised_inputs,
+            t=t,
+            cond=cond,
+            cfg_dropout_prob=self.cfg_dropout_prob,
+        )
+
         loss = torch.nn.functional.mse_loss(output, targets).mean()
         return loss
 
     def training_step(self, batch, batch_idx):
         loss = self.step(batch)
-        self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True, batch_size=self._infer_batch_size(batch))
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self.step(batch)
-        self.log("valid_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("valid_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=self._infer_batch_size(batch))
         return loss
+
+    # optional helper so logs have correct batch_size even with dicts
+    def _infer_batch_size(self, batch):
+        if isinstance(batch, dict) and "audio" in batch and torch.is_tensor(batch["audio"]):
+            return batch["audio"].shape[0]
+        if isinstance(batch, (list, tuple)) and torch.is_tensor(batch[0]):
+            return batch[0].shape[0]
+        return None
+
 
 
 """ Datamodule """

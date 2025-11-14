@@ -1,35 +1,3 @@
-#!/usr/bin/env python3
-"""
-DEAP → Stable Audio Dataset (EEG–Audio alignment)
-
-This module exposes:
-
-    def create_deap_dataset(root_dir: str, **kwargs) -> torch.utils.data.Dataset
-
-It builds a map-style Dataset that:
-- Loads all DEAP subject files from:  <root_dir>/data_preprocessed_python/sXX.dat
-- Loads available audio clips + metadata JSONs from: <root_dir>/audio/<id>.(json|m4a|webm|opus|mp3|wav)
-- Uses the JSON's `deap.Highlight_start` (seconds) to align audio with the 60 s DEAP trial
-- Windows each 60 s trial into chunk(s) (default 47.554 s) with optional hop
-- Time-aligns EEG windows (after optional 3 s baseline drop) with the audio windows
-- Optionally resamples audio to Stable Audio's common SR (default 44_100)
-
-get_item returns a dict with at least these keys:
-  - 'eeg':   FloatTensor (C_eeg, T_eeg)
-  - 'audio': FloatTensor (2, T_audio)
-  - 'prompt': str
-  - 'start_seconds': float  # relative to the 60s trial window
-  - 'total_seconds': float  # usually 60.0
-
-Notes
------
-• Trial index mapping: by default, we assume `experiment_id` (1-indexed as in JSON filenames)
-  maps to DEAP trial index `experiment_id - 1`. If your experiment ordering differs,
-  pass a custom `expid_to_trial` mapping dict via the factory.
-• DEAP .dat structure (preprocessed): data shape is (40 trials, 40 channels, 8064 samples),
-  labels shape is (40, 4). The 8064 samples typically cover 3 s baseline + 60 s trial @ 128 Hz.
-
-"""
 
 from __future__ import annotations
 import os
@@ -136,10 +104,8 @@ def _default_prompt(deap_block: Dict[str, Any], ratings: Optional[np.ndarray]) -
     artist = str(deap_block.get('Artist', '') or '').strip()
     title = str(deap_block.get('Title', '') or '').strip()
     bits = []
-    if artist or title:
-        bits.append(f"{artist} — {title}".strip(' —'))
-    if tag:
-        bits.append(f"tag: {tag}")
+    if artist or title or tag:
+        bits.append(f"Tag: {tag} - Artiest: {artist} — Title: {title}".strip(' —'))
     if ratings is not None and ratings.size == 4:
         v, a, d, l = [float(x) for x in ratings]
         bits.append(f"valence {v:.2f}/9 arousal {a:.2f}/9 dominance {d:.2f}/9 liking {l:.2f}/9")
@@ -343,8 +309,7 @@ class DEAPStableAudioDataset(Dataset):
 
 
 def create_deap_dataset(
-    root_dir: str,
-    *,
+    path: str,
     chunk_dur_s: float = 47.55446713,
     eeg_sr: int = 128,
     include_peripheral: bool = False,
@@ -371,18 +336,24 @@ def create_deap_dataset(
    
 # Quick test
 
+def print(ds, id):
+    sample = ds[id]
+    eeg = sample['eeg']
+    audio = sample['audio']
+    print(f"item summary for {id}")
+    print(f"  eeg:   shape={tuple(eeg.shape)}, sr={ds.eeg_sr}")
+    print(f"  audio: shape={tuple(audio.shape)}, sr={ds.audio_sr}")
+    print(f"  start_seconds={sample['start_seconds']} total_seconds={sample['total_seconds']}")
+    print(f"  prompt=\"{sample['prompt']}\"")
+
+
 if __name__ == '__main__':
     root = '/app/mnt/MusicEEGen/data/deap/deap-dataset'
 
     ds = create_deap_dataset(root, split='train')
 
     print(f"Dataset length: {len(ds)}")
-    if len(ds) > 0:
-        sample = ds[0]
-        eeg = sample['eeg']
-        audio = sample['audio']
-        print("First item summary →")
-        print(f"  eeg:   shape={tuple(eeg.shape)}, sr={ds.eeg_sr}")
-        print(f"  audio: shape={tuple(audio.shape)}, sr={ds.audio_sr}")
-        print(f"  start_seconds={sample['start_seconds']} total_seconds={sample['total_seconds']}")
-        print(f"  prompt=\"{sample['prompt']}\"")
+    int top_n = 5
+    for i in range(top_n):
+        print(ds, i)
+    

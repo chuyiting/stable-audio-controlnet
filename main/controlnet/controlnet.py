@@ -142,12 +142,12 @@ class ControlNetDiffusionTransformer(nn.Module):
 
         else:
             raise ValueError(f"Unknown transformer type: {self.transformer_type}")
-
+        
         self.preprocess_conv = nn.Conv1d(dim_in, dim_in, 1, bias=False)
         nn.init.zeros_(self.preprocess_conv.weight)
 
         # controlnet stuff
-
+        # zero initialize these conv so no controlnet contribution in the beginning
         self.conv_in = nn.Conv1d(dim_in, dim_in, 1, bias=False)
         nn.init.zeros_(self.conv_in.weight)
 
@@ -157,9 +157,9 @@ class ControlNetDiffusionTransformer(nn.Module):
 
     def _forward(
             self,
-            x,
-            t,
-            controlnet_cond=None,
+            x, # (B, C_x, T)
+            t, # (B,)
+            controlnet_cond=None, # (B, C_ctrl, T)
             mask=None,
             cross_attn_cond=None,
             cross_attn_cond_mask=None,
@@ -220,6 +220,7 @@ class ControlNetDiffusionTransformer(nn.Module):
             prepend_length = prepend_inputs.shape[1]
 
         x = self.preprocess_conv(x) + x
+        # !!!!!!!!!!KEY controlnet mixing!!!!!!!!!!
         controlnet_cond = self.conv_in(controlnet_cond)
         x = x + controlnet_cond
 
@@ -253,14 +254,14 @@ class ControlNetDiffusionTransformer(nn.Module):
             x,
             t,
             controlnet_cond=None,
-            cross_attn_cond=None,
-            cross_attn_cond_mask=None,
-            input_concat_cond=None,
+            cross_attn_cond=None, # (B, L_ctx, cond_token_dim)
+            cross_attn_cond_mask=None, # (B, L_ctx)
+            input_concat_cond=None, # extra per time step cond (B, C_concat, T_concat)
             negative_cross_attn_cond=None,
             negative_cross_attn_mask=None,
-            global_embed=None,
-            prepend_cond=None,
-            prepend_cond_mask=None,
+            global_embed=None, # (B, global_cond_dim)
+            prepend_cond=None, # (B, L_pre, prepend_cond_dim)
+            prepend_cond_mask=None, # (B, L_pre)
             causal=False,
             cfg_dropout_prob=0.0,
             cfg_scale=1.0,
