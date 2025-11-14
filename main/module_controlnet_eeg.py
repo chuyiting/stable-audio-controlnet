@@ -290,7 +290,6 @@ class SampleLogger(Callback):
                 logger=wandb_logger,
                 id=f"true_{i}",
                 samples=eeg[i:i+1],
-                sampling_rate=pl_module.sample_rate,
                 caption=f"Prompt: {prompts[i]}",
             )
 

@@ -281,7 +281,7 @@ def log_wandb_audio_spectrogram(
 def log_wandb_eeg_batch(
     logger,              # this is trainer.logger.experiment (wandb run)
     id: str,
-    eeg: torch.Tensor,   # (B, C, T) or (C, T)
+    samples: torch.Tensor,   # (B, C, T) or (C, T)
     caption: str = "",
 ):
     """
@@ -290,14 +290,14 @@ def log_wandb_eeg_batch(
     eeg: (B, C, T) or (C, T)
     """
     # Make sure we always have a batch dimension
-    if eeg.dim() == 2:
+    if samples.dim() == 2:
         eeg = eeg.unsqueeze(0)   # (1, C, T)
 
-    num_items = eeg.shape[0]
+    num_items = samples.shape[0]
     logs = {}
 
     for idx in range(num_items):
-        data = eeg[idx].detach().cpu().numpy()  # (C, T)
+        data = samples[idx].detach().cpu().numpy()  # (C, T)
 
         fig, ax = plt.subplots(figsize=(6, 4))
         im = ax.imshow(
