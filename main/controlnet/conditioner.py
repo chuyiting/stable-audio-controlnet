@@ -43,7 +43,7 @@ class EEGConditioner(nn.Module):
         self,
         output_dim: int, 
         ckpt_path: str,
-        n_channels: int = 18,
+        n_channels: int = 32,
         emb_size: int = 256,
         heads: int = 8,
         depth: int = 4,
