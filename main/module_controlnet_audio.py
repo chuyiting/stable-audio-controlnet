@@ -100,6 +100,7 @@ class Model(pl.LightningModule):
                                                           device=self.device)
         print(f"x latent shape: {noised_inputs.shape}")
         print(f"audio shape {cond['audio'][0].shape}")
+        print(f"audio mask shape {cond['audio'][1].shape}")
 
         output = self.model(x=noised_inputs,
                             t=t.to(self.device),

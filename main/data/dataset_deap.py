@@ -53,6 +53,10 @@ def _resample_audio(audio: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
     out = torchaudio.functional.resample(tensor, src_sr, dst_sr)
     return out.numpy()
 
+def _get_audio_len_sec(path: str) -> float:
+    info = torchaudio.info(path)
+    return info.num_frames / info.sample_rate
+
 def _read_audio_segment(path: str, start_sec: float, dur_sec: float, target_sr: int,
                         force_stereo: bool = True) -> np.ndarray:
     """
@@ -240,12 +244,20 @@ class DEAPStableAudioDataset(Dataset):
                 if not (0 <= trial < data.shape[0]):
                     continue 
 
+                audio_path = blk['audio']
+                audio_len_sec = _get_audio_len_sec(audio_path)
+
                 for st in starts:
                     eeg_start = int((trial_offset_sec + st) * self.eeg_sr)
                     eeg_end = eeg_start + int(self.chunk_dur_s * self.eeg_sr)
                     max_end = int(trial_offset_sec * self.eeg_sr) + int(trial_len_sec * self.eeg_sr)
                     if eeg_end > max_end: # handle precision error
                         eeg_end = max_end
+
+                    a_start = float(blk['hstart']) + st
+                    # skip if audio is too short for this window, inaccurate label
+                    if a_start + self.chunk_dur_s > audio_len_sec:
+                        continue
 
                     self._indices.append(_Idx(
                         subject=s_code, # s01 
@@ -337,15 +349,16 @@ def create_deap_dataset(
    
 # Quick test
 
-def print_item(ds, id):
+def print_item(ds, id, shoud_print):
     sample = ds[id]
     eeg = sample['eeg']
     audio = sample['audio']
-    print(f"item summary for {id}")
-    print(f"  eeg:   shape={tuple(eeg.shape)}, sr={ds.eeg_sr}")
-    print(f"  audio: shape={tuple(audio.shape)}, sr={ds.audio_sr}")
-    print(f"  start_seconds={sample['start_seconds']} total_seconds={sample['total_seconds']}")
-    print(f"  prompt=\"{sample['prompt']}\"")
+    if shoud_print:
+        print(f"item summary for {id}")
+        print(f"  eeg:   shape={tuple(eeg.shape)}, sr={ds.eeg_sr}")
+        print(f"  audio: shape={tuple(audio.shape)}, sr={ds.audio_sr}")
+        print(f"  start_seconds={sample['start_seconds']} total_seconds={sample['total_seconds']}")
+        print(f"  prompt=\"{sample['prompt']}\"")
 
 
 if __name__ == '__main__':
@@ -354,7 +367,10 @@ if __name__ == '__main__':
     ds = create_deap_dataset(root, split='train')
 
     print(f"Dataset length: {len(ds)}")
-    top_n = 5
+    top_n = len(ds)
     for i in range(top_n):
-        print_item(ds, i)
+        if top_n % 10 == 0:
+            print_item(ds, i, True)
+        else:
+            print_item(ds, i, False)
     
