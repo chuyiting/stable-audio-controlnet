@@ -336,7 +336,7 @@ def create_deap_dataset(
    
 # Quick test
 
-def print(ds, id):
+def print_item(ds, id):
     sample = ds[id]
     eeg = sample['eeg']
     audio = sample['audio']
@@ -355,5 +355,5 @@ if __name__ == '__main__':
     print(f"Dataset length: {len(ds)}")
     top_n = 5
     for i in range(top_n):
-        print(ds, i)
+        print_item(ds, i)
     
