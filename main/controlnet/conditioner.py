@@ -153,7 +153,6 @@ class EEGConditioner(nn.Module):
             self.encoder.eval()
             with torch.no_grad():
                 # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
-                print(f'eeg shape before encoding: {x.shape}')
                 eeg_embedding = self.encoder(x)
         else:
             # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
