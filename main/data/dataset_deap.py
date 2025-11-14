@@ -321,7 +321,7 @@ def create_deap_dataset(
     split: str = 'train' # or val
 ) -> DEAPStableAudioDataset:
     return DEAPStableAudioDataset(
-        root_dir,
+        path,
         chunk_dur_s=chunk_dur_s,
         eeg_sr=eeg_sr,
         include_peripheral=include_peripheral,
