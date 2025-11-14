@@ -14,8 +14,6 @@ from torch.utils.data import DataLoader
 from main.utils import log_wandb_audio_batch, log_wandb_audio_spectrogram
 
 
-
-
 """ Model """
 
 class Model(pl.LightningModule):
