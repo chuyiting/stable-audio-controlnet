@@ -37,6 +37,8 @@ class EEGConditioner(Conditioner):
             mask:    (B,) all ones (not really used, but matches (tensor, mask) API)
         """
         B = len(x)
+        print(x)
+        print(x[0].shape)
         C, T = x[0].shape
         assert C == self.eeg_dim, f"Expected {self.eeg_dim} EEG channels, got {C}"
         assert T == self.eeg_t, f"Expected T_eeg={self.eeg_t}, got {T}"
