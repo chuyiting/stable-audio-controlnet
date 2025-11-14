@@ -268,13 +268,17 @@ class SampleLogger(Callback):
         if is_train:
             pl_module.eval()
         wandb_logger = get_wandb_logger(trainer).experiment
-        _, y, prompts, start_seconds, total_seconds = batch
-        y = torch.clip(y, -1, 1)
 
-        num_samples = min(self.num_samples, y.shape[0])
+        x_audio = batch["audio"]          # tensor (B, 2, Ta) sr = 44100
+        prompts = batch["prompt"]         # List[str] (default collate)
+        start_seconds = batch["start_seconds"] # (B,)
+        total_seconds = batch["total_seconds"] # (B,)
+        eeg = batch['eeg'] # tensor (B, 32, Teeg) sr=128
+
+        num_samples = min(self.num_samples, eeg.shape[0])
 
         conditioning = [{
-            "audio": y[i:i+1].to(pl_module.device),
+            "eeg": eeg[i:i+1].to(pl_module.device),
             "prompt": prompts[i],
             "seconds_start": start_seconds[i],
             "seconds_total": total_seconds[i],
@@ -285,14 +289,14 @@ class SampleLogger(Callback):
             log_wandb_audio_batch(
                 logger=wandb_logger,
                 id=f"true_{i}",
-                samples=y[i:i+1],
+                samples=eeg[i:i+1],
                 sampling_rate=pl_module.sample_rate,
                 caption=f"Prompt: {prompts[i]}",
             )
             log_wandb_audio_spectrogram(
                 logger=wandb_logger,
                 id=f"true_{i}",
-                samples=y[i:i+1],
+                samples=eeg[i:i+1],
                 sampling_rate=pl_module.sample_rate,
                 caption=f"Prompt: {prompts[i]}",
             )
