@@ -64,8 +64,8 @@ class Model(pl.LightningModule):
 
     def configure_optimizers(self):
         train_params = []
-        train_params += list(model.model.controlnet.parameters())
-        train_params += list(model.conditioner.conditioners["eeg"].projector.parameters())
+        train_params += list(self.model.model.controlnet.parameters())
+        train_params += list(self.model.conditioner.conditioners["eeg"].projector.parameters())
         optimizer = torch.optim.AdamW(
             train_params,
             lr=self.lr,
