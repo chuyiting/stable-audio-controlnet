@@ -4,7 +4,6 @@ from stable_audio_tools.models.conditioners import Conditioner
 import sys
 sys.path.append('../../../eeg-tutorial/encoders/BIOT')
 
-from model import BIOTClassifier
 import torch.nn as nn
 
 class EEGConditioner(Conditioner):
