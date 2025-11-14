@@ -334,14 +334,14 @@ class SampleLogger(Callback):
                 log_wandb_audio_batch(
                     logger=wandb_logger,
                     id=f"sample_sum_{i}",
-                    samples=output[i:i + 1] + y[i:i+1],
+                    samples=output[i:i + 1],
                     sampling_rate=pl_module.sample_rate,
                     caption=f"Sampled in {steps} steps.",
                 )
                 log_wandb_audio_spectrogram(
                     logger=wandb_logger,
                     id=f"sample_sum_{i}",
-                    samples=output[i:i + 1] + y[i:i+1],
+                    samples=output[i:i + 1],
                     sampling_rate=pl_module.sample_rate,
                     caption=f"Sampled in {steps} steps.",
                 )
