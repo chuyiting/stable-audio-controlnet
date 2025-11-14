@@ -129,7 +129,7 @@ class Model(pl.LightningModule):
                 "eeg": eeg[i:i+1]
             }
             cond_items.append(item)
-
+        print(f"eeg shape: {cond_items[0]["eeg"].shape}")
         cond = self.model.conditioner(cond_items, device=device)
 
         print(f"x latent shape: {noised_inputs.shape}")
