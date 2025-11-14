@@ -7,7 +7,7 @@ from stable_audio_tools.inference.sampling import get_alphas_sigmas
 from stable_audio_tools.models.utils import load_ckpt_state_dict
 
 from main.controlnet.factory import create_model_from_config
-from main.controlnet.conditoner import EEGConditioner
+from main.controlnet.conditioner import EEGConditioner
 
 from huggingface_hub import hf_hub_download
 
