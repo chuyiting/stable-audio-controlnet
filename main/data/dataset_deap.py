@@ -208,6 +208,7 @@ class DEAPStableAudioDataset(Dataset):
         root_dir: str,
         *,
         chunk_dur_s: float = 47.55446713, # Windowing
+        chunk_overlap_s: float = 2.0,
         # EEG
         eeg_sr: int = 128,
         include_peripheral: bool = False,
@@ -225,6 +226,7 @@ class DEAPStableAudioDataset(Dataset):
         super().__init__()
         self.root = root_dir
         self.chunk_dur_s = float(chunk_dur_s)
+        self.chunk_overlap_s = float(chunk_overlap_s)
         self.eeg_sr = int(eeg_sr)
         self.include_peripheral = bool(include_peripheral)
         self.drop_baseline_3s = bool(drop_baseline_3s)
@@ -310,9 +312,24 @@ class DEAPStableAudioDataset(Dataset):
             else:
                 trial_offset_sec = 0.0
 
-            # 2 windows within 60 s
-            trial_len_sec = 60.0
-            starts = [0.0, max(0.0, math.floor(trial_len_sec - chunk_dur_s))]
+            trial_len_sec = 60.0          # full trial length
+            chunk_dur_s   = self.chunk_dur_s  
+            overlap_s     = self.chunk_overlap_s
+
+            stride_s = max(1e-3, chunk_dur_s - overlap_s) 
+
+            starts = []
+            st = 0.0
+            while st + chunk_dur_s <= trial_len_sec:
+                starts.append(st)
+                st += stride_s
+
+            # ensure we have a window that ends exactly at trial_len_sec
+            last_possible_start = max(0.0, trial_len_sec - chunk_dur_s)
+            if not starts:
+                starts = [0.0]
+            elif last_possible_start - starts[-1] > 1e-6:
+                starts.append(last_possible_start)
 
             # For each available experiment id, map to trial index
             for exp_id, blk in self.experiments.items():
@@ -402,6 +419,7 @@ class DEAPStableAudioDataset(Dataset):
 def create_deap_dataset(
     path: str,
     chunk_dur_s: float = 47.55446713,
+    chunk_overlap_s: float = 2.0,
     eeg_sr: int = 128,
     use_biot_ch: bool = True,
     biot_dim: int=18,
