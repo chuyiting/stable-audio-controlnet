@@ -71,6 +71,8 @@ class EEGConditioner(nn.Module):
         elif ckpt_path:
             print(f"Warning: Checkpoint path provided but file not found: {ckpt_path}")
         
+        self.post_encoder_norm = nn.LayerNorm(emb_size)
+
         # Projection layer: BIOT embedding -> controlnet output dimension
         # BIOT outputs (B, emb_size), we need (B, output_dim, 1)
         self.projector = nn.Sequential(
@@ -141,6 +143,7 @@ class EEGConditioner(nn.Module):
         
         # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
         eeg_embedding = self.encoder(x)
+        eeg_embedding = self.post_encoder_norm(x)
         
         # Project to output dimension: (B, emb_size) -> (B, output_dim)
         projected = self.projector(eeg_embedding)
