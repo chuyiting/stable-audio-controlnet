@@ -36,7 +36,6 @@ class EEGConditioner(nn.Module):
         depth: Number of transformer layers in BIOT (default: 4)
         n_fft: FFT size for STFT in BIOT (default: 200)
         hop_length: Hop length for STFT in BIOT (default: 100)
-        freeze_encoder: Whether to freeze BIOT encoder weights (default: True)
     """
     
     def __init__(
@@ -48,15 +47,13 @@ class EEGConditioner(nn.Module):
         heads: int = 8,
         depth: int = 4,
         n_fft: int = 200,
-        hop_length: int = 100,
-        freeze_encoder:bool = True
+        hop_length: int = 100
     ):
         super().__init__()  # Initialize nn.Module
         
         self.output_dim = output_dim
         self.emb_size = emb_size
         self.n_channels = n_channels
-        self.freeze_encoder = freeze_encoder
         
         # Initialize BIOT Encoder
         self.encoder = BIOTEncoder(
@@ -142,15 +139,8 @@ class EEGConditioner(nn.Module):
         
         B = x.shape[0]  # Get batch size
         
-        # Ensure encoder is in correct mode
-        if self.freeze_encoder:
-            self.encoder.eval()
-            with torch.no_grad():
-                # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
-                eeg_embedding = self.encoder(x)
-        else:
-            # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
-            eeg_embedding = self.encoder(x)
+        # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
+        eeg_embedding = self.encoder(x)
         
         # Project to output dimension: (B, emb_size) -> (B, output_dim)
         projected = self.projector(eeg_embedding)
