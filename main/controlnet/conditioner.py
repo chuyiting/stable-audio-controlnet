@@ -49,6 +49,7 @@ class EEGConditioner(nn.Module):
         depth: int = 4,
         n_fft: int = 200,
         hop_length: int = 100,
+        freeze_encoder:bool = True
     ):
         super().__init__()  # Initialize nn.Module
         
