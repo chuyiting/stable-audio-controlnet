@@ -271,7 +271,7 @@ class SampleLogger(Callback):
             self.log_sample(trainer, pl_module, batch)
             self.log_next = False
 
-   @torch.no_grad()
+    @torch.no_grad()
     def log_sample(self, trainer, pl_module, batch):
         is_train = pl_module.training
         if is_train:
