@@ -28,7 +28,9 @@ class Model(pl.LightningModule):
         lr_weight_decay: float,
         depth_factor: float,
         cfg_dropout_prob: float,
-        eeg_ckpt_path: str
+        eeg_ch: int,
+        eeg_ckpt_path: str,
+        freeze_eeg_encoder: bool
     ):
         super().__init__()
         self.lr = lr
@@ -42,6 +44,7 @@ class Model(pl.LightningModule):
         model, model_config = get_pretrained_controlnet_model("stabilityai/stable-audio-open-1.0",
                                                               controlnet_types=["eeg"],
                                                               depth_factor=depth_factor,
+                                                              eeg_ch=eeg_ch,
                                                               eeg_ckpt_path=eeg_ckpt_path)
         self.model_config = model_config
         self.sample_size = model_config["sample_size"]
@@ -53,6 +56,9 @@ class Model(pl.LightningModule):
         self.model.model.model.requires_grad_(False)
         self.model.conditioner.requires_grad_(False)
         self.model.conditioner.eval()
+        if not freeze_eeg_encoder:
+            self.model.conditioner.conditioners['eeg'].requires_grad_(True)
+            self.model.conditioner.conditioners['eeg'].train()
         self.model.pretransform.requires_grad_(False)
         self.model.pretransform.eval()
 

@@ -35,45 +35,62 @@ DEAP_CHANNELS = [
 """
 BIOT channels
 https://github.com/ycq091044/BIOT/blob/main/datasets/TUAB/process.py
+Assumption: A1, A2 = 0
 """
 BIOT_PAIRS = [
     "FP1-F7", "F7-T7", "T7-P7", "P7-O1",
     "FP2-F8", "F8-T8", "T8-P8", "P8-O2",
     "FP1-F3", "F3-C3", "C3-P3", "P3-O1",
-    "FP2-F4", "F4-C4", "C4-P4", "P4-O2"
+    "FP2-F4", "F4-C4", "C4-P4", "P4-O2",
+    "C3", "C4"
 ]
 
 DEAP_IDX = {ch.upper(): i for i, ch in enumerate(DEAP_CHANNELS)}
 
-def _deap_to_biot_bipolar(eeg):
+def _deap_to_biot_bipolar(eeg, dim: int = 16):
     """
-    Convert DEAP 32-channel EEG to BIOT 16-channel bipolar montage.
+    Convert DEAP 32-channel EEG to BIOT bipolar montage.
 
-    Parameters:
+    Parameters
+    ----------
     eeg : torch.Tensor
         Shape (32, T) or (B, 32, T).
+    dim : int
+        Number of output channels. Supported values:
+        - 16: only the first 16 bipolar channels
+        - 18: 16 bipolar channels + C3, C4 as the last two channels
 
-    Returns:
-    eeg_bipolar : 
-        Shape (16, T) or (B, 16, T).
+    Returns
+    -------
+    eeg_bipolar : torch.Tensor
+        Shape (dim, T) or (B, dim, T).
+        When dim == 18, channels 16 and 17 (0-based) are C3 and C4.
     """
-
     data = eeg
     assert data.shape[-2] == 32, f"Expected channels dim (-2) = 32, got {data.shape}"
+    assert dim in (16, 18), f"dim must be 16 or 18, got {dim}"
+    assert dim <= len(BIOT_PAIRS), f"dim {dim} exceeds available BIOT mappings ({len(BIOT_PAIRS)})"
+
+    pairs_to_use = BIOT_PAIRS[:dim]
 
     out_shape = list(data.shape)
-    out_shape[-2] = len(BIOT_PAIRS)  # 16
+    out_shape[-2] = dim
     eeg_bipolar = data.new_zeros(*out_shape)
 
-    for k, pair in enumerate(BIOT_PAIRS):
-        a_name, b_name = pair.split("-")
-        a_idx = DEAP_IDX[a_name.upper()]
-        b_idx = DEAP_IDX[b_name.upper()]
-
-        a_sig = data.select(dim=-2, index=a_idx)
-        b_sig = data.select(dim=-2, index=b_idx)
-
-        eeg_bipolar[..., k, :] = a_sig - b_sig
+    for k, pair in enumerate(pairs_to_use):
+        # Bipolar pair: "A-B"
+        if "-" in pair:
+            a_name, b_name = pair.split("-")
+            a_idx = DEAP_IDX[a_name.upper()]
+            b_idx = DEAP_IDX[b_name.upper()]
+            a_sig = data.select(dim=-2, index=a_idx)
+            b_sig = data.select(dim=-2, index=b_idx)
+            eeg_bipolar[..., k, :] = a_sig - b_sig
+        else:
+            # Monopolar channel: e.g., "C3" or "C4"
+            ch_idx = DEAP_IDX[pair.upper()]
+            ch_sig = data.select(dim=-2, index=ch_idx)
+            eeg_bipolar[..., k, :] = ch_sig
 
     return eeg_bipolar
 
@@ -196,6 +213,7 @@ class DEAPStableAudioDataset(Dataset):
         include_peripheral: bool = False,
         drop_baseline_3s: bool = True,
         use_biot_ch: bool=True,
+        biot_dim: int=18,
         # Audio
         audio_sr: int = 44_100,
         seed: int = 42,
@@ -213,6 +231,7 @@ class DEAPStableAudioDataset(Dataset):
         self.audio_sr = int(audio_sr)
         self.use_prompt = use_prompt
         self.use_biot_ch = use_biot_ch
+        self.biot_dim = biot_dim
 
         # Directories
         self.dir_audio = os.path.join(self.root, 'audio')
@@ -352,7 +371,7 @@ class DEAPStableAudioDataset(Dataset):
         eeg = trial_arr[:, s:e]
         eeg_t = torch.from_numpy(eeg.astype(np.float32))  # (C, T_eeg)
         if self.use_biot_ch:
-            eeg_t = _deap_to_biot_bipolar(eeg_t)
+            eeg_t = _deap_to_biot_bipolar(eeg_t, self.biot_dim)
 
         # Audio window aligned with EEG window: start at highlight_start + start_sec
         a_start = x.highlight_start + x.start_sec
@@ -385,6 +404,7 @@ def create_deap_dataset(
     chunk_dur_s: float = 47.55446713,
     eeg_sr: int = 128,
     use_biot_ch: bool = True,
+    biot_dim: int=18,
     include_peripheral: bool = False,
     drop_baseline_3s: bool = True,
     audio_sr: int = 44100,
@@ -398,6 +418,7 @@ def create_deap_dataset(
         chunk_dur_s=chunk_dur_s,
         eeg_sr=eeg_sr,
         use_biot_ch=use_biot_ch,
+        biot_dim=biot_dim,
         include_peripheral=include_peripheral,
         drop_baseline_3s=drop_baseline_3s,
         audio_sr=audio_sr,

@@ -16,6 +16,7 @@ from huggingface_hub import hf_hub_download
 def get_pretrained_controlnet_model(name: str,
                                     controlnet_types : List[str],
                                     depth_factor=0.5,
+                                    eeg_ch=18,
                                     eeg_ckpt_path=''):
     model_config_path = hf_hub_download(name, filename="model_config.json", repo_type='model')
 
@@ -51,8 +52,7 @@ def get_pretrained_controlnet_model(name: str,
 
     # EEG conditioner does not exist, we need to manually create and add to it
     if 'eeg' in controlnet_types:
-        # TODO 
-        eeg_conditioner = EEGConditioner(model_config["model"]['io_channels'], eeg_ckpt_path)
+        eeg_conditioner = EEGConditioner(model_config["model"]['io_channels'],eeg_ckpt_path, n_channels = eeg_ch)
         model.conditioner.conditioners['eeg'] = eeg_conditioner
 
 

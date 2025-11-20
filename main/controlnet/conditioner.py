@@ -49,7 +49,6 @@ class EEGConditioner(nn.Module):
         depth: int = 4,
         n_fft: int = 200,
         hop_length: int = 100,
-        freeze_encoder: bool = True
     ):
         super().__init__()  # Initialize nn.Module
         
@@ -73,12 +72,6 @@ class EEGConditioner(nn.Module):
             self._load_pretrained_weights(ckpt_path)
         elif ckpt_path:
             print(f"Warning: Checkpoint path provided but file not found: {ckpt_path}")
-        
-        # Freeze encoder if specified
-        if self.freeze_encoder:
-            for param in self.encoder.parameters():
-                param.requires_grad = False
-            self.encoder.eval()
         
         # Projection layer: BIOT embedding -> controlnet output dimension
         # BIOT outputs (B, emb_size), we need (B, output_dim, 1)
