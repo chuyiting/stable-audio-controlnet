@@ -271,18 +271,22 @@ class SampleLogger(Callback):
             self.log_sample(trainer, pl_module, batch)
             self.log_next = False
 
-    @torch.no_grad()
+   @torch.no_grad()
     def log_sample(self, trainer, pl_module, batch):
         is_train = pl_module.training
         if is_train:
             pl_module.eval()
         wandb_logger = get_wandb_logger(trainer).experiment
 
-        x_audio = batch["audio"]          # tensor (B, 2, Ta) sr = 44100
-        prompts = batch["prompt"]         # List[str] (default collate)
-        start_seconds = batch["start_seconds"] # (B,)
-        total_seconds = batch["total_seconds"] # (B,)
-        eeg = batch['eeg'] # tensor (B, 32, Teeg) sr=128
+        epoch = trainer.current_epoch
+        global_step = trainer.global_step
+        run_tag = f"ep{epoch}_gs{global_step}"
+
+        x_audio = batch["audio"]              # (B, 2, Ta) sr = 44100
+        prompts = batch["prompt"]             # List[str]
+        start_seconds = batch["start_seconds"]  # (B,)
+        total_seconds = batch["total_seconds"]  # (B,)
+        eeg = batch["eeg"]                    # (B, 32, Teeg) sr = 128
 
         num_samples = min(self.num_samples, eeg.shape[0])
 
@@ -293,17 +297,39 @@ class SampleLogger(Callback):
             "seconds_total": total_seconds[i],
         } for i in range(num_samples)]
 
-
         for i in range(num_samples):
             log_wandb_eeg_batch(
                 logger=wandb_logger,
-                id=f"true_{i}",
+                id=f"{run_tag}_true_eeg_{i}",
                 samples=eeg[i:i+1],
-                caption=f"Prompt: {prompts[i]}",
+                caption=(
+                    f"[{run_tag}] EEG | i={i} | "
+                    f"Prompt: {prompts[i]}"
+                ),
             )
 
+        for i in range(num_samples):
+            log_wandb_audio_batch(
+                logger=wandb_logger,
+                id=f"{run_tag}_gt_audio_{i}",
+                samples=x_audio[i:i+1],
+                sampling_rate=pl_module.sample_rate,
+                caption=(
+                    f"[{run_tag}] GT audio | i={i} | "
+                    f"Prompt: {prompts[i]}"
+                ),
+            )
+            log_wandb_audio_spectrogram(
+                logger=wandb_logger,
+                id=f"{run_tag}_gt_audio_{i}",
+                samples=x_audio[i:i+1],
+                sampling_rate=pl_module.sample_rate,
+                caption=(
+                    f"[{run_tag}] GT spectrogram | i={i} | "
+                    f"Prompt: {prompts[i]}"
+                ),
+            )
         for steps in self.sampling_steps:
-
             output = generate_diffusion_cond(
                 pl_module.model,
                 batch_size=num_samples,
@@ -314,24 +340,34 @@ class SampleLogger(Callback):
                 sigma_min=0.3,
                 sigma_max=500,
                 sampler_type="dpmpp-3m-sde",
-                device="cuda"
+                device="cuda",  # or pl_module.device
             )
+
             for i in range(num_samples):
+                sample_id = f"{run_tag}_sample_x_{i}_steps{steps}"
+
                 log_wandb_audio_batch(
                     logger=wandb_logger,
-                    id=f"sample_x_{i}",
-                    samples=output[i:i + 1],
+                    id=sample_id,
+                    samples=output[i:i+1],
                     sampling_rate=pl_module.sample_rate,
-                    caption=f"Sampled in {steps} steps.",
+                    caption=(
+                        f"[{run_tag}] Sampled in {steps} steps | "
+                        f"i={i} | Prompt: {prompts[i]}"
+                    ),
                 )
                 log_wandb_audio_spectrogram(
                     logger=wandb_logger,
-                    id=f"sample_x_{i}",
-                    samples=output[i:i + 1],
+                    id=sample_id,
+                    samples=output[i:i+1],
                     sampling_rate=pl_module.sample_rate,
-                    caption=f"Sampled in {steps} steps.",
+                    caption=(
+                        f"[{run_tag}] Sampled in {steps} steps | "
+                        f"i={i} | Prompt: {prompts[i]}"
+                    ),
                 )
 
         if is_train:
             pl_module.train()
+
 
