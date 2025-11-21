@@ -5,7 +5,7 @@ def create_model_from_config(model_config):
 
     assert model_type is not None, 'model_type must be specified in model config'
 
-    if model_type == 'diffusion_cond_controlnet':
+    if model_type == 'diffusion_cond_controlnet' or model_type == 'diffusion_cond_film':
         from main.controlnet.diffusion import create_diffusion_cond_from_config
         return create_diffusion_cond_from_config(model_config)
     else:
