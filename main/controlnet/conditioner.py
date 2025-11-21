@@ -143,7 +143,7 @@ class EEGConditioner(nn.Module):
         
         # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
         eeg_embedding = self.encoder(x)
-        eeg_embedding = self.post_encoder_norm(x)
+        eeg_embedding = self.post_encoder_norm(eeg_embedding)
         
         # Project to output dimension: (B, emb_size) -> (B, output_dim)
         projected = self.projector(eeg_embedding)
