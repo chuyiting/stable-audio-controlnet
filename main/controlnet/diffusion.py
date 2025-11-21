@@ -171,8 +171,6 @@ class DiTFiLMWrapper(ConditionedDiffusionModel):
             film_cond=film_cond,
             cfg_scale=cfg_scale,
             cfg_dropout_prob=cfg_dropout_prob,
-            cfg_cross_attn_dropout_mask=cfg_cross_attn_dropout_mask,
-            cfg_prepend_dropout_mask=cfg_prepend_dropout_mask,
             scale_phi=scale_phi,
             global_embed=global_cond,
             **kwargs)
