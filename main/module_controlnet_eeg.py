@@ -111,6 +111,7 @@ class Model(pl.LightningModule):
 
         # encode to diffusion latent
         diffusion_input = self.model.pretransform.encode(x_audio)  # shape (B, ...)
+        print(diffusion_input.shape)
 
         # timesteps
         t = self._sample_timesteps(diffusion_input.shape[0], device)
