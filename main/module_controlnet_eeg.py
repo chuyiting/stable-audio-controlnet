@@ -69,9 +69,9 @@ class Model(pl.LightningModule):
         self.model.conditioner.eval()
         if not freeze_eeg_encoder:
             eeg = self.model.conditioner.conditioners['eeg']
-            for p in eeg.parameters():
+            for name, p in eeg.named_parameters():
                 if p.dtype.is_floating_point:  
-                    print(p)
+                    print(name)
                     p.requires_grad_(True)
             self.model.conditioner.conditioners['eeg'].train()
         self.model.pretransform.requires_grad_(False)
@@ -84,7 +84,7 @@ class Model(pl.LightningModule):
         if use_film:
             for name, param in self.model.named_parameters():
                 if "to_scale_shift_gate" in name:
-                    print(param)
+                    print(name)
                     param.requires_grad_(True)
         model.conditioner.conditioners["eeg"].projector.train()
 

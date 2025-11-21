@@ -259,7 +259,7 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
             if len(global_cond.shape) == 3:
                 global_cond = global_cond.squeeze(1)
         
-        if len(self.film_cond) > 0:
+        if len(self.film_cond_ids) > 0:
             # Concatenate all film conditioning inputs over the channel dimension
             film_conds = []
             for key in self.film_cond_ids:
