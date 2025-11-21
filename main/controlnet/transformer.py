@@ -76,6 +76,7 @@ class ContinuousTransformer(nn.Module):
             controlnet_embeds=None,
             **kwargs
     ):
+        print(f"continuous transformer kargs: {kwargs}")
         batch, seq, device = *x.shape[:2], x.device
 
         info = {
