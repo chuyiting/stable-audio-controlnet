@@ -26,6 +26,7 @@ def get_pretrained_controlnet_model(name: str,
     model_config["model_type"] = "diffusion_cond_controlnet"
     model_config["model"]["diffusion"]['config']["controlnet_depth_factor"] = depth_factor
     model_config["model"]["diffusion"]["type"] = "dit_controlnet"
+    model_config["model"]["pretransform"]["chunk"] = True
 
     model_config["model"]["diffusion"]['controlnet_cond_ids'] = []
     for controlnet_type in controlnet_types:

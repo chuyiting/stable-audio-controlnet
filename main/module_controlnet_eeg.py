@@ -113,6 +113,8 @@ class Model(pl.LightningModule):
 
         # encode to diffusion latent
         diffusion_input = self.model.pretransform.encode(x_audio)  # shape (B, ...)
+        print(f"x audio: {x_audio.shape}")
+        print(f"diffusion input: {diffusion_input.shape}")
 
         # timesteps
         t = self._sample_timesteps(diffusion_input.shape[0], device)
@@ -293,6 +295,8 @@ class SampleLogger(Callback):
         start_seconds = batch["start_seconds"]  # (B,)
         total_seconds = batch["total_seconds"]  # (B,)
         eeg = batch["eeg"]                    # (B, 32, Teeg) sr = 128
+        # TODO make magic number flexible
+        sample_size = int((x_audio.shape[2] / 44100) * 21.5 * 2048)
 
         num_samples = min(self.num_samples, eeg.shape[0])
 
@@ -335,6 +339,7 @@ class SampleLogger(Callback):
                     f"Prompt: {prompts[i]}"
                 ),
             )
+        
         for steps in self.sampling_steps:
             output = generate_diffusion_cond(
                 pl_module.model,
@@ -342,7 +347,8 @@ class SampleLogger(Callback):
                 steps=steps,
                 cfg_scale=7.0,
                 conditioning=conditioning,
-                sample_size=pl_module.sample_size,
+                # sample_size=pl_module.sample_size,
+                sample_size=sample_size,
                 sigma_min=0.3,
                 sigma_max=500,
                 sampler_type="dpmpp-3m-sde",
