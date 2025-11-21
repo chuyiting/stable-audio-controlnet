@@ -349,7 +349,7 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
     elif diffusion_model_type == 'dit_controlnet':
         diffusion_model = DiTControlNetWrapper(**diffusion_model_config)
     elif diffusion_model_type == 'dit_film':
-        diffusion_model = DitFilmWrapper(**diffusion_model_config)
+        diffusion_model = DiTFiLMWrapper(**diffusion_model_config)
 
     io_channels = model_config.get('io_channels', None)
     assert io_channels is not None, "Must specify io_channels in model config"
