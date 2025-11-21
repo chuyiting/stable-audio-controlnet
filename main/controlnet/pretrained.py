@@ -83,7 +83,7 @@ def get_pretrained_film_model(name: str,
 
     with open(model_config_path) as f:
         model_config = json.load(f)
-    model_config["model_type"] = "diffusion_cond_controlnet"
+    model_config["model_type"] = "diffusion_cond_film"
     model_config["model"]["diffusion"]["type"] = "dit_film"
     model_config["model"]["pretransform"]["chunk"] = True
 

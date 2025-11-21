@@ -26,7 +26,7 @@ class DiffusionTransformer(nn.Module):
                  num_heads=8,
                  transformer_type: tp.Literal["x-transformers", "continuous_transformer"] = "x-transformers",
                  global_cond_type: tp.Literal["prepend", "adaLN"] = "prepend",
-                 use_film=False
+                 use_film=False,
                  **kwargs):
 
         super().__init__()
