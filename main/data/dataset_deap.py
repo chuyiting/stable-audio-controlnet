@@ -207,7 +207,7 @@ class DEAPStableAudioDataset(Dataset):
         self,
         root_dir: str,
         *,
-        chunk_dur_s: float = 47.55446713, # Windowing
+        chunk_dur_s: float = 10.0, # Windowing
         chunk_overlap_s: float = 2.0,
         # EEG
         eeg_sr: int = 128,
@@ -469,7 +469,7 @@ if __name__ == '__main__':
     print(f"Dataset length: {len(ds)}")
     top_n = len(ds)
     for i in range(top_n):
-        if top_n % 10 == 0:
+        if top_n % 100 == 0:
             print_item(ds, i, True)
         else:
             print_item(ds, i, False)
