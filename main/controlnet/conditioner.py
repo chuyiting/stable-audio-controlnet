@@ -1,3 +1,23 @@
+import torch
+import torch.nn as nn
+import os
+import sys
+
+# Add BIOT to path
+# TODO: Consider making this more robust with proper package installation
+BIOT_PATH = os.path.join(os.path.dirname(__file__), '../../../eeg-tutorial/encoders/BIOT')
+if BIOT_PATH not in sys.path:
+    sys.path.append(BIOT_PATH)
+
+from model.biot import BIOTEncoder
+
+# NOTE: For testing without stable_audio_tools, we inherit from nn.Module
+# When stable_audio_tools is installed, uncomment the following lines:
+# from stable_audio_tools.models.conditioners import Conditioner
+# class EEGConditioner(Conditioner):
+#     def __init__(self, ...):
+#         super().__init__(output_dim, output_dim)  # Use this instead of super().__init__()
+
 class EEGConditioner(nn.Module):
     """
     EEG Conditioner that uses BIOT encoder to transform EEG signals into
