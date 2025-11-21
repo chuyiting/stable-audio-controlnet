@@ -370,7 +370,7 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
     input_concat_ids = diffusion_config.get('input_concat_ids', [])
     prepend_cond_ids = diffusion_config.get('prepend_cond_ids', [])
     controlnet_cond_ids = diffusion_config.get('controlnet_cond_ids', [])
-    controlnet_cond_ids = diffusion_config.get('film_cond_ids', [])
+    film_cond_ids = diffusion_config.get('film_cond_ids', [])
 
     pretransform = model_config.get("pretransform", None)
 
