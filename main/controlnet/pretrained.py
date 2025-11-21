@@ -17,7 +17,8 @@ def get_pretrained_controlnet_model(name: str,
                                     controlnet_types : List[str],
                                     depth_factor=0.5,
                                     eeg_ch=18,
-                                    eeg_ckpt_path=''):
+                                    eeg_ckpt_path='',
+                                    duration_s=-1.0):
     model_config_path = hf_hub_download(name, filename="model_config.json", repo_type='model')
 
     with open(model_config_path) as f:
@@ -52,7 +53,7 @@ def get_pretrained_controlnet_model(name: str,
 
     # EEG conditioner does not exist, we need to manually create and add to it
     if 'eeg' in controlnet_types:
-        eeg_conditioner = EEGConditioner(model_config["model"]['io_channels'],eeg_ckpt_path, n_channels = eeg_ch)
+        eeg_conditioner = EEGConditioner(model_config["model"]['io_channels'],eeg_ckpt_path, n_channels = eeg_ch, duration_s=duration_s)
         model.conditioner.conditioners['eeg'] = eeg_conditioner
 
 

@@ -30,7 +30,8 @@ class Model(pl.LightningModule):
         cfg_dropout_prob: float,
         eeg_ch: int,
         eeg_ckpt_path: str,
-        freeze_eeg_encoder: bool
+        freeze_eeg_encoder: bool,
+        duration_s: float
     ):
         super().__init__()
         self.lr = lr
@@ -45,7 +46,8 @@ class Model(pl.LightningModule):
                                                               controlnet_types=["eeg"],
                                                               depth_factor=depth_factor,
                                                               eeg_ch=eeg_ch,
-                                                              eeg_ckpt_path=eeg_ckpt_path)
+                                                              eeg_ckpt_path=eeg_ckpt_path,
+                                                              duration_s=duration_s)
         self.model_config = model_config
         self.sample_size = model_config["sample_size"]
         self.sample_rate = model_config["sample_rate"]
