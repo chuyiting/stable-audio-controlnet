@@ -170,6 +170,7 @@ class ControlNetDiffusionTransformer(nn.Module):
             cfg_scale=None,
             **kwargs):
 
+        print(f"control net diffusion transformer 1: {x.shape}")
         if cross_attn_cond is not None:
             cross_attn_cond = self.to_cond_embed(cross_attn_cond)
 
@@ -204,7 +205,7 @@ class ControlNetDiffusionTransformer(nn.Module):
             global_embed = global_embed + timestep_embed
         else:
             global_embed = timestep_embed
-
+        print(f"control net diffusion transformer 2: {x.shape}")
         # Add the global_embed to the prepend inputs if there is no global conditioning support in the transformer
         if self.global_cond_type == "prepend":
             if prepend_inputs is None:
@@ -218,7 +219,7 @@ class ControlNetDiffusionTransformer(nn.Module):
                                          dim=1)
 
             prepend_length = prepend_inputs.shape[1]
-
+        print(f"control net diffusion transformer 3: {x.shape}")
         x = self.preprocess_conv(x) + x
         # !!!!!!!!!!KEY controlnet mixing!!!!!!!!!!
         controlnet_cond = self.conv_in(controlnet_cond)
