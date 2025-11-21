@@ -90,6 +90,8 @@ class Model(pl.LightningModule):
 
     def configure_optimizers(self): 
         train_params = [p for p in self.model.parameters() if p.requires_grad]
+        print("Optimizer has", sum(p.numel() for p in train_params), "params")
+
         optimizer = torch.optim.AdamW(
             train_params,
             lr=self.lr,
