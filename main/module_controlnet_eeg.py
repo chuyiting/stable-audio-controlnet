@@ -57,7 +57,10 @@ class Model(pl.LightningModule):
         self.model.conditioner.requires_grad_(False)
         self.model.conditioner.eval()
         if not freeze_eeg_encoder:
-            self.model.conditioner.conditioners['eeg'].requires_grad_(True)
+            eeg = self.model.conditioner.conditioners['eeg']
+            for p in eeg.parameters():
+                if p.dtype.is_floating_point:  
+                    p.requires_grad_(True)
             self.model.conditioner.conditioners['eeg'].train()
         self.model.pretransform.requires_grad_(False)
         self.model.pretransform.eval()
