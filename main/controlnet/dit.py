@@ -26,6 +26,7 @@ class DiffusionTransformer(nn.Module):
                  num_heads=8,
                  transformer_type: tp.Literal["x-transformers", "continuous_transformer"] = "x-transformers",
                  global_cond_type: tp.Literal["prepend", "adaLN"] = "prepend",
+                 use_film=False
                  **kwargs):
 
         super().__init__()
@@ -109,7 +110,7 @@ class DiffusionTransformer(nn.Module):
 
             global_dim = None
 
-            if self.global_cond_type == "adaLN":
+            if self.global_cond_type == "adaLN" or use_film:
                 # The global conditioning is projected to the embed_dim already at this point
                 global_dim = embed_dim
 
@@ -144,6 +145,7 @@ class DiffusionTransformer(nn.Module):
             global_embed=None,
             prepend_cond=None,
             prepend_cond_mask=None,
+            film_cond=None,
             controlnet_embeds=None,
             return_info=False,
             **kwargs):
@@ -206,6 +208,12 @@ class DiffusionTransformer(nn.Module):
         if self.global_cond_type == "adaLN":
             extra_args["global_cond"] = global_embed
 
+        # TODO clean this up
+        # we are assuming global cond is always prepend!!!
+        if film_cond is not None:
+            print('use fillm!!!')
+            extra_args["global_cond"] = film_cond
+
         if self.patch_size > 1:
             x = rearrange(x, "b (t p) c -> b t (c p)", p=self.patch_size)
 
@@ -253,6 +261,7 @@ class DiffusionTransformer(nn.Module):
             controlnet_embeds=None,
             prepend_cond=None,
             prepend_cond_mask=None,
+            film_cond=None,
             cfg_scale=1.0,
             cfg_dropout_prob=0.0,
             cfg_cross_attn_dropout_mask=None,

@@ -8,7 +8,7 @@ from pytorch_lightning import Callback, Trainer
 from pytorch_lightning.loggers import WandbLogger
 from stable_audio_tools.inference.generation import generate_diffusion_cond
 
-from main.controlnet.pretrained import get_pretrained_controlnet_model
+from main.controlnet.pretrained import get_pretrained_controlnet_model, get_pretrained_film_model
 from stable_audio_tools.inference.sampling import get_alphas_sigmas
 from torch.utils.data import DataLoader
 from main.utils import log_wandb_audio_batch, log_wandb_audio_spectrogram,  log_wandb_eeg_batch
@@ -31,7 +31,8 @@ class Model(pl.LightningModule):
         eeg_ch: int,
         eeg_ckpt_path: str,
         freeze_eeg_encoder: bool,
-        duration_s: float
+        duration_s: float,
+        use_film: bool = False
     ):
         super().__init__()
         self.lr = lr
@@ -39,15 +40,23 @@ class Model(pl.LightningModule):
         self.lr_beta2 = lr_beta2
         self.lr_eps = lr_eps
         self.lr_weight_decay = lr_weight_decay
+        self.freeze_eeg_encoder = freeze_eeg_encoder
+        self.use_film = use_film
 
         self.timestep_sampler = "logit_normal"
         self.diffusion_objective = "v"
-        model, model_config = get_pretrained_controlnet_model("stabilityai/stable-audio-open-1.0",
-                                                              controlnet_types=["eeg"],
-                                                              depth_factor=depth_factor,
-                                                              eeg_ch=eeg_ch,
-                                                              eeg_ckpt_path=eeg_ckpt_path,
-                                                              duration_s=duration_s)
+        if use_film:
+            model, model_config = get_pretrained_film_model("stabilityai/stable-audio-open-1.0",
+                                                                eeg_ch=eeg_ch,
+                                                                eeg_ckpt_path=eeg_ckpt_path)
+        else:
+            model, model_config = get_pretrained_controlnet_model("stabilityai/stable-audio-open-1.0",
+                                                                controlnet_types=["eeg"],
+                                                                depth_factor=depth_factor,
+                                                                eeg_ch=eeg_ch,
+                                                                eeg_ckpt_path=eeg_ckpt_path,
+                                                                duration_s=duration_s)
+                                                                
         self.model_config = model_config
         self.sample_size = model_config["sample_size"]
         self.sample_rate = model_config["sample_rate"]
@@ -62,6 +71,7 @@ class Model(pl.LightningModule):
             eeg = self.model.conditioner.conditioners['eeg']
             for p in eeg.parameters():
                 if p.dtype.is_floating_point:  
+                    print(p)
                     p.requires_grad_(True)
             self.model.conditioner.conditioners['eeg'].train()
         self.model.pretransform.requires_grad_(False)
@@ -71,12 +81,15 @@ class Model(pl.LightningModule):
         for p in model.conditioner.conditioners["eeg"].projector.parameters():
             p.requires_grad = True
         
+        if use_film:
+            for name, param in self.model.named_parameters():
+                if "to_scale_shift_gate" in name:
+                    print(param)
+                    param.requires_grad_(True)
         model.conditioner.conditioners["eeg"].projector.train()
 
-    def configure_optimizers(self):
-        train_params = []
-        train_params += list(self.model.model.controlnet.parameters())
-        train_params += list(self.model.conditioner.conditioners["eeg"].projector.parameters())
+    def configure_optimizers(self): 
+        train_params = [p for p in self.model.parameters() if p.requires_grad]
         optimizer = torch.optim.AdamW(
             train_params,
             lr=self.lr,

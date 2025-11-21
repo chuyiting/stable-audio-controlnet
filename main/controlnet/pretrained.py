@@ -57,7 +57,6 @@ def get_pretrained_controlnet_model(name: str,
         eeg_conditioner = EEGConditioner(model_config["model"]['io_channels'],eeg_ckpt_path, n_channels = eeg_ch, duration_s=duration_s)
         model.conditioner.conditioners['eeg'] = eeg_conditioner
 
-
     # Try to download the model.safetensors file first, if it doesn't exist, download the model.ckpt file
     try:
         model_ckpt_path = hf_hub_download(name, filename="model.safetensors", repo_type='model')
@@ -74,6 +73,51 @@ def get_pretrained_controlnet_model(name: str,
         if controlnet_type in ["audio", "envelope", "chroma"]:
             state_dict_pretransform = {k: v for k, v in state_dict.items() if k.startswith('pretransform.')}
             model.conditioner.conditioners[controlnet_type].load_state_dict(state_dict_pretransform)
+
+    return model, model_config
+
+def get_pretrained_film_model(name: str,
+                                eeg_ch=18,
+                                eeg_ckpt_path=''):
+    model_config_path = hf_hub_download(name, filename="model_config.json", repo_type='model')
+
+    with open(model_config_path) as f:
+        model_config = json.load(f)
+    model_config["model_type"] = "diffusion_cond_film"
+    model_config["model"]["diffusion"]["type"] = "dit_film"
+    model_config["model"]["pretransform"]["chunk"] = True
+
+    # TODO remove
+    model_config["model"]["diffusion"]['controlnet_cond_ids'] = []
+    model_config["model"]["diffusion"]['film_cond_ids'] = []
+
+    # EEG conditioner does not exist, we need to manually create and add to it
+    eeg_config = {"id": "eeg",
+                    "type": "number", # just placeholder, will replace later
+                    "config": {}} # dont care
+
+    model_config["model"]['conditioning']['configs'].append(eeg_config)
+    model_config["model"]["diffusion"]['film_cond_ids'].append("eeg")
+    # TODO global conditioning and cross attention conditioning
+    # model_config['model']['diffusion']['cross_attention_cond_ids'].append(controlnet_type)
+    # model_config['model']['diffusion']['global_cond_ids'].append(controlnet_type)
+
+    model = create_model_from_config(model_config)
+
+    # EEG conditioner does not exist, we need to manually create and add to it
+    if 'eeg' in controlnet_types:
+        eeg_conditioner = EEGConditioner(model_config["model"]["diffusion"]["config"]["global_cond_dim"], eeg_ckpt_path, n_channels = eeg_ch, duration_s=-1)
+        model.conditioner.conditioners['eeg'] = eeg_conditioner
+
+
+    # Try to download the model.safetensors file first, if it doesn't exist, download the model.ckpt file
+    try:
+        model_ckpt_path = hf_hub_download(name, filename="model.safetensors", repo_type='model')
+    except Exception as e:
+        model_ckpt_path = hf_hub_download(name, filename="model.ckpt", repo_type='model')
+
+    state_dict = load_ckpt_state_dict(model_ckpt_path)
+    model.load_state_dict(state_dict, strict=False)
 
     return model, model_config
 

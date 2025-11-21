@@ -71,7 +71,7 @@ class ContinuousTransformer(nn.Module):
             mask=None,
             prepend_embeds=None,
             prepend_mask=None,
-            global_cond=None,
+            global_cond=None, # FiLM
             return_info=False,
             controlnet_embeds=None,
             **kwargs

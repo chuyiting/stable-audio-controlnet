@@ -90,6 +90,7 @@ class DiTControlNetWrapper(ConditionedDiffusionModel):
         assert batch_cfg, "batch_cfg must be True for DiTWrapper"
         #assert negative_input_concat_cond is None, "negative_input_concat_cond is not supported for DiTWrapper"
 
+
         controlnet_embeds, cfg_cross_attn_dropout_mask, cfg_prepend_dropout_mask = self.controlnet(x,
                                             t,
                                             controlnet_cond=scale_controlnet_cond * controlnet_cond,
@@ -125,6 +126,57 @@ class DiTControlNetWrapper(ConditionedDiffusionModel):
             global_embed=global_cond,
             **kwargs)
 
+class DiTFiLMWrapper(ConditionedDiffusionModel):
+    def __init__(
+        self,
+        *args,
+        **kwargs
+    ):
+        super().__init__(supports_cross_attention=True, supports_global_cond=True, supports_input_concat=False)
+
+        self.model = DiffusionTransformer(use_film=True, *args, **kwargs)
+
+    def forward(self,
+                x,
+                t,
+                cross_attn_cond=None,
+                cross_attn_mask=None,
+                negative_cross_attn_cond=None,
+                negative_cross_attn_mask=None,
+                input_concat_cond=None,
+                negative_input_concat_cond=None,
+                global_cond=None,
+                negative_global_cond=None,
+                prepend_cond=None,
+                prepend_cond_mask=None,
+                film_cond=None,
+                cfg_scale: float = 1.0,
+                cfg_dropout_prob: float = 0.0,
+                batch_cfg: bool = True,
+                rescale_cfg: bool = False,
+                scale_phi: float = 0.0,
+                **kwargs):
+
+
+        return self.model(
+            x,
+            t,
+            cross_attn_cond=cross_attn_cond,
+            cross_attn_cond_mask=cross_attn_mask,
+            negative_cross_attn_cond=negative_cross_attn_cond,
+            negative_cross_attn_mask=negative_cross_attn_mask,
+            input_concat_cond=input_concat_cond,
+            prepend_cond=prepend_cond,
+            prepend_cond_mask=prepend_cond_mask,
+            film_cond=film_cond,
+            cfg_scale=cfg_scale,
+            cfg_dropout_prob=cfg_dropout_prob,
+            cfg_cross_attn_dropout_mask=cfg_cross_attn_dropout_mask,
+            cfg_prepend_dropout_mask=cfg_prepend_dropout_mask,
+            scale_phi=scale_phi,
+            global_embed=global_cond,
+            **kwargs)
+
 
 class ConditionedControlNetDiffusionModelWrapper(nn.Module):
     """
@@ -144,6 +196,7 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
             input_concat_ids: tp.List[str] = [],
             prepend_cond_ids: tp.List[str] = [],
             controlnet_cond_ids: tp.List[str] = [],
+            film_cond_ids: tp.List[str] = []
             ):
         super().__init__()
 
@@ -158,6 +211,7 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
         self.input_concat_ids = input_concat_ids
         self.prepend_cond_ids = prepend_cond_ids
         self.controlnet_cond_ids = controlnet_cond_ids
+        self.film_cond_ids = film_cond_ids
         self.min_input_length = min_input_length
 
     def get_conditioning_inputs(self, conditioning_tensors: tp.Dict[str, tp.Any], negative=False):
@@ -168,6 +222,7 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
         prepend_cond = None
         prepend_cond_mask = None
         controlnet_cond = None
+        film_cond = None
 
         if len(self.cross_attn_cond_ids) > 0:
             # Concatenate all cross-attention inputs over the sequence dimension
@@ -203,6 +258,20 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
 
             if len(global_cond.shape) == 3:
                 global_cond = global_cond.squeeze(1)
+        
+        if len(self.film_cond) > 0:
+            # Concatenate all film conditioning inputs over the channel dimension
+            film_conds = []
+            for key in self.film_cond_ids:
+                film_cond_input = conditioning_tensors[key][0] # tensor [1] is mask
+
+                film_conds.append(film_cond_input)
+
+            # Concatenate over the channel dimension
+            film_cond = torch.cat(film_conds, dim=-1)
+
+            if len(film_cond.shape) == 3:
+                film_cond = film_cond.squeeze(1)
 
         if len(self.input_concat_ids) > 0:
             # Concatenate all input concat conditioning inputs over the channel dimension
@@ -244,7 +313,8 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
                 "input_concat_cond": input_concat_cond,
                 "prepend_cond": prepend_cond,
                 "prepend_cond_mask": prepend_cond_mask,
-                "controlnet_cond": controlnet_cond
+                "controlnet_cond": controlnet_cond,
+                "film_cond": film_cond
             }
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond: tp.Dict[str, tp.Any], **kwargs):
@@ -278,6 +348,8 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
         diffusion_model = DiTWrapper(**diffusion_model_config)
     elif diffusion_model_type == 'dit_controlnet':
         diffusion_model = DiTControlNetWrapper(**diffusion_model_config)
+    elif diffusion_model_type == 'dit_film':
+        diffusion_model = DitFilmWrapper(**diffusion_model_config)
 
     io_channels = model_config.get('io_channels', None)
     assert io_channels is not None, "Must specify io_channels in model config"
@@ -298,6 +370,7 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
     input_concat_ids = diffusion_config.get('input_concat_ids', [])
     prepend_cond_ids = diffusion_config.get('prepend_cond_ids', [])
     controlnet_cond_ids = diffusion_config.get('controlnet_cond_ids', [])
+    controlnet_cond_ids = diffusion_config.get('film_cond_ids', [])
 
     pretransform = model_config.get("pretransform", None)
 
@@ -312,6 +385,8 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
     elif diffusion_model_type == "dit":
         min_input_length *= diffusion_model.model.patch_size
     elif diffusion_model_type == "dit_controlnet":
+        min_input_length *= diffusion_model.model.patch_size
+    elif diffusion_model_type == "dit_film":
         min_input_length *= diffusion_model.model.patch_size
 
     # Get the proper wrapper class
@@ -332,7 +407,11 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
             wrapper_fn = MonoToStereoDiffusionPrior
     elif model_type == "diffusion_cond_controlnet":
         wrapper_fn = ConditionedControlNetDiffusionModelWrapper
-        assert diffusion_model_type == 'dit_controlnet'
+        assert diffusion_model_type == 'dit_controlnet' 
+    elif model_type == "diffusion_cond_film":
+        # TODO separate the wrapper for FiLM
+        wrapper_fn = ConditionedControlNetDiffusionModelWrapper
+        assert diffusion_model_type == 'dit_film' 
 
     return wrapper_fn(
         diffusion_model,
@@ -344,6 +423,7 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
         global_cond_ids=global_cond_ids,
         input_concat_ids=input_concat_ids,
         prepend_cond_ids=prepend_cond_ids,
+        film_cond_ids=film_cond_ids,
         pretransform=pretransform,
         io_channels=io_channels,
         **extra_kwargs
