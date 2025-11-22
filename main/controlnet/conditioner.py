@@ -52,22 +52,24 @@ class EEGConditioner(nn.Module):
         depth: int = 4,
         n_fft: int = 200,
         hop_length: int = 100,
-        duration_s: float = -1,   
+        duration_s: float = -1,  
+        use_film: bool = False 
     ):
         super().__init__()
 
         self.output_dim = output_dim
         self.emb_size = emb_size
         self.n_channels = n_channels
+        self.use_film = use_film
 
         # Stable Audio Open latent rate (approx)
         self.latent_rate_hz = 21.5
         self.duration_s = float(duration_s)
 
-        if self.duration_s > 0:
-            self.n_latent = int(round(self.duration_s * self.latent_rate_hz))
+        if self.duration_s > 0 and not use_film:
+            self.T_latent = int(round(self.duration_s * self.latent_rate_hz))
         else:
-            self.n_latent = -1 
+            self.T_latent = -1 
 
         # Initialize BIOT Encoder
         self.encoder = BIOTEncoder(
@@ -88,13 +90,13 @@ class EEGConditioner(nn.Module):
         self.post_encoder_norm = nn.LayerNorm(emb_size)
 
         # Projection layer:
-        #   (B, emb_size) -> (B, output_dim * n_latent)
-        if self.n_latent > 0:
+        #   (B, emb_size) -> (B, output_dim * T_latent)
+        if self.T_latent > 0:
             self.projector = nn.Sequential(
                 nn.Linear(emb_size, output_dim * 2),
                 nn.GELU(),
                 nn.Dropout(0.1),
-                nn.Linear(output_dim * 2, output_dim * self.n_latent),
+                nn.Linear(output_dim * 2, output_dim * self.T_latent),
             )
         else: 
             self.projector = nn.Sequential(
@@ -167,19 +169,19 @@ class EEGConditioner(nn.Module):
         eeg_embedding = self.post_encoder_norm(eeg_embedding)
 
         # Project to (B, output_dim * T_latent)
-        projected = self.projector(eeg_embedding)  # (B, output_dim * n_latent)
+        projected = self.projector(eeg_embedding)  # (B, output_dim * T_latent)
 
-        # Reshape to (B, output_dim, T_latent)
-        if self.n_latent > 0: 
-            output = projected.view(B, self.output_dim, self.n_latent)
+        if self.use_film:
+            output = projected.view(B, self.output_dim)
+        elif self.T_latent > 0: 
+            output = projected.view(B, self.output_dim, self.T_latent)
         else:
-             output = projected.view(B, self.output_dim, 1)
+            output = projected.view(B, self.output_dim, 1)
 
-        # Mask over time dimension: (B, T_latent)
-        if self.n_latent > 0:
+        if self.T_latent > 0:
             mask = torch.ones(
                 B,
-                self.n_latent,
+                self.T_latent,
                 device=output.device,
                 dtype=torch.float32,
             )

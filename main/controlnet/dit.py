@@ -211,7 +211,8 @@ class DiffusionTransformer(nn.Module):
         # TODO clean this up
         # we are assuming global cond is always prepend!!!
         if film_cond is not None:
-            print('use fillm!!!')
+            print('use film!!!')
+            print(f"film cond shape: {film_cond.shape}")
             extra_args["global_cond"] = film_cond
 
         if self.patch_size > 1:
