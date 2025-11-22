@@ -542,19 +542,18 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
             io_channels=io_channels,
             **extra_kwargs
         )
-
-    return wrapper_fn(
-        diffusion_model,
-        conditioner,
-        min_input_length=min_input_length,
-        sample_rate=sample_rate,
-        controlnet_cond_ids=controlnet_cond_ids,
-        cross_attn_cond_ids=cross_attention_ids,
-        global_cond_ids=global_cond_ids,
-        input_concat_ids=input_concat_ids,
-        prepend_cond_ids=prepend_cond_ids,
-        film_cond_ids=film_cond_ids,
-        pretransform=pretransform,
-        io_channels=io_channels,
-        **extra_kwargs
-    )
+    else:
+        return wrapper_fn(
+            diffusion_model,
+            conditioner,
+            min_input_length=min_input_length,
+            sample_rate=sample_rate,
+            controlnet_cond_ids=controlnet_cond_ids,
+            cross_attn_cond_ids=cross_attention_ids,
+            global_cond_ids=global_cond_ids,
+            input_concat_ids=input_concat_ids,
+            prepend_cond_ids=prepend_cond_ids,
+            pretransform=pretransform,
+            io_channels=io_channels,
+            **extra_kwargs
+        )
