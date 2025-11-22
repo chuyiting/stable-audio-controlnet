@@ -80,13 +80,16 @@ class Model(pl.LightningModule):
         # controlnet and eeg projector
         for p in model.conditioner.conditioners["eeg"].projector.parameters():
             p.requires_grad = True
+        self.model.conditioner.conditioners["eeg"].projector.train()
         
         if use_film:
             for name, param in self.model.named_parameters():
                 if "to_scale_shift_gate" in name:
                     print(name)
                     param.requires_grad_(True)
-        model.conditioner.conditioners["eeg"].projector.train()
+        
+         print("Trainable parameters", sum(p.numel() for p in train_params), "params")
+
 
     def configure_optimizers(self): 
         train_params = [p for p in self.model.parameters() if p.requires_grad]
