@@ -156,7 +156,7 @@ class Model(pl.LightningModule):
         diffusion_input = self.model.pretransform.encode(x_audio)  # shape (B, ...)
 
         if self.global_step < 3:
-            sprint("[DEBUG] diffusion_input.requires_grad:", diffusion_input.requires_grad)
+            print("[DEBUG] diffusion_input.requires_grad:", diffusion_input.requires_grad)
 
 
         # timesteps
