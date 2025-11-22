@@ -197,15 +197,15 @@ class Model(pl.LightningModule):
         cond = self.model.conditioner(cond_items, device=device)
 
         if self.global_step < 3:
-        # cond is likely a dict or tensor; try to inspect tensors in it
-        if isinstance(cond, dict):
-            for k, v in cond.items():
-                if torch.is_tensor(v):
-                    print(f"[DEBUG] cond['{k}'].requires_grad:", v.requires_grad)
-        elif torch.is_tensor(cond):
-            print("[DEBUG] cond.requires_grad:", cond.requires_grad)
-        else:
-            print("[DEBUG] cond type:", type(cond))
+            # cond is likely a dict or tensor; try to inspect tensors in it
+            if isinstance(cond, dict):
+                for k, v in cond.items():
+                    if torch.is_tensor(v):
+                        print(f"[DEBUG] cond['{k}'].requires_grad:", v.requires_grad)
+            elif torch.is_tensor(cond):
+                print("[DEBUG] cond.requires_grad:", cond.requires_grad)
+            else:
+                print("[DEBUG] cond type:", type(cond))
 
         # forward
         output = self.model(
