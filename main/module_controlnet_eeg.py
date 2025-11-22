@@ -87,10 +87,6 @@ class Model(pl.LightningModule):
                 if "to_scale_shift_gate" in name:
                     print(name)
                     param.requires_grad_(True)
-        
-        for p in self.model.parameters():
-            if p.requires_grad:
-                print(f"trainable param : {p}") 
 
 
     def configure_optimizers(self): 
@@ -131,8 +127,37 @@ class Model(pl.LightningModule):
         eeg, x_audio, prompts, start_seconds, total_seconds = self._unpack_batch(batch)
         device = self.device
 
+        # ---- DEBUG: global grad state ----
+        if self.global_step < 3:  # only spam a few times
+            print("\n[DEBUG] step() called at global_step =", self.global_step)
+            print("[DEBUG] torch.is_grad_enabled():", torch.is_grad_enabled())
+
+            # check a couple of key params
+            try:
+                eeg_proj_param = next(self.model.conditioner.conditioners["eeg"].projector.parameters())
+                print("[DEBUG] EEG projector param requires_grad:", eeg_proj_param.requires_grad)
+            except Exception as e:
+                print("[DEBUG] Could not inspect EEG projector params:", e)
+
+            try:
+                # find one FiLM param
+                for name, p in self.model.named_parameters():
+                    if "to_scale_shift_gate" in name:
+                        print("[DEBUG] Example FiLM param:", name,
+                            "requires_grad:", p.requires_grad)
+                        break
+                else:
+                    print("[DEBUG] No FiLM param with 'to_scale_shift_gate' found in named_parameters()")
+            except Exception as e:
+                print("[DEBUG] Could not inspect FiLM params:", e)
+
+
         # encode to diffusion latent
         diffusion_input = self.model.pretransform.encode(x_audio)  # shape (B, ...)
+
+        if self.global_step < 3:
+            sprint("[DEBUG] diffusion_input.requires_grad:", diffusion_input.requires_grad)
+
 
         # timesteps
         t = self._sample_timesteps(diffusion_input.shape[0], device)
@@ -154,6 +179,10 @@ class Model(pl.LightningModule):
         noised_inputs = diffusion_input * alphas + noise * sigmas
         targets = noise * alphas - diffusion_input * sigmas  # v-prediction target
 
+        if self.global_step < 3:
+            print("[DEBUG] noised_inputs.requires_grad:", noised_inputs.requires_grad)
+            print("[DEBUG] targets.requires_grad:", targets.requires_grad)
+
         # conditioner items per-sample
         B = diffusion_input.shape[0]
         cond_items = []
@@ -167,6 +196,17 @@ class Model(pl.LightningModule):
             cond_items.append(item)
         cond = self.model.conditioner(cond_items, device=device)
 
+        if self.global_step < 3:
+        # cond is likely a dict or tensor; try to inspect tensors in it
+        if isinstance(cond, dict):
+            for k, v in cond.items():
+                if torch.is_tensor(v):
+                    print(f"[DEBUG] cond['{k}'].requires_grad:", v.requires_grad)
+        elif torch.is_tensor(cond):
+            print("[DEBUG] cond.requires_grad:", cond.requires_grad)
+        else:
+            print("[DEBUG] cond type:", type(cond))
+
         # forward
         output = self.model(
             x=noised_inputs,
@@ -175,7 +215,17 @@ class Model(pl.LightningModule):
             cfg_dropout_prob=self.cfg_dropout_prob,
         )
 
+        if self.global_step < 3:
+            print("[DEBUG] output.requires_grad:", output.requires_grad)
+            print("[DEBUG] output.grad_fn:", output.grad_fn)
+
+
         loss = torch.nn.functional.mse_loss(output, targets).mean()
+
+        if self.global_step < 3:
+            print("[DEBUG] loss.requires_grad:", loss.requires_grad)
+            print("[DEBUG] loss.grad_fn:", loss.grad_fn)
+
         return loss
 
     def training_step(self, batch, batch_idx):
