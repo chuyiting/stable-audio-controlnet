@@ -192,7 +192,6 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
             input_concat_ids: tp.List[str] = [],
             prepend_cond_ids: tp.List[str] = [],
             controlnet_cond_ids: tp.List[str] = [],
-            film_cond_ids: tp.List[str] = []
             ):
         super().__init__()
 
@@ -207,7 +206,6 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
         self.input_concat_ids = input_concat_ids
         self.prepend_cond_ids = prepend_cond_ids
         self.controlnet_cond_ids = controlnet_cond_ids
-        self.film_cond_ids = film_cond_ids
         self.min_input_length = min_input_length
 
     def get_conditioning_inputs(self, conditioning_tensors: tp.Dict[str, tp.Any], negative=False):
@@ -218,7 +216,6 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
         prepend_cond = None
         prepend_cond_mask = None
         controlnet_cond = None
-        film_cond = None
 
         if len(self.cross_attn_cond_ids) > 0:
             # Concatenate all cross-attention inputs over the sequence dimension
@@ -254,20 +251,6 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
 
             if len(global_cond.shape) == 3:
                 global_cond = global_cond.squeeze(1)
-        
-        if len(self.film_cond_ids) > 0:
-            # Concatenate all film conditioning inputs over the channel dimension
-            film_conds = []
-            for key in self.film_cond_ids:
-                film_cond_input = conditioning_tensors[key][0] # tensor [1] is mask
-
-                film_conds.append(film_cond_input)
-
-            # Concatenate over the channel dimension
-            film_cond = torch.cat(film_conds, dim=-1)
-
-            if len(film_cond.shape) == 3:
-                film_cond = film_cond.squeeze(1)
 
         if len(self.input_concat_ids) > 0:
             # Concatenate all input concat conditioning inputs over the channel dimension
@@ -310,7 +293,6 @@ class ConditionedControlNetDiffusionModelWrapper(nn.Module):
                 "prepend_cond": prepend_cond,
                 "prepend_cond_mask": prepend_cond_mask,
                 "controlnet_cond": controlnet_cond,
-                "film_cond": film_cond
             }
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond: tp.Dict[str, tp.Any], **kwargs):
