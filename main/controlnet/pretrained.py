@@ -105,7 +105,7 @@ def get_pretrained_film_model(name: str,
     model = create_model_from_config(model_config)
 
     # EEG conditioner does not exist, we need to manually create and add to it
-    eeg_conditioner = EEGConditioner(model_config["model"]["diffusion"]["config"]["global_cond_dim"], eeg_ckpt_path, n_channels = eeg_ch, duration_s=-1)
+    eeg_conditioner = EEGConditioner(model_config["model"]["diffusion"]["config"]["global_cond_dim"], eeg_ckpt_path, n_channels = eeg_ch, duration_s=-1, use_film=True)
     model.conditioner.conditioners['eeg'] = eeg_conditioner
 
 
