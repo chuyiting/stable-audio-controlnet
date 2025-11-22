@@ -274,6 +274,7 @@ class DiffusionTransformer(nn.Module):
 
         assert causal == False, "Causal mode is not supported for DiffusionTransformer"
 
+        print("DiffusionTransformer")
         if cross_attn_cond_mask is not None:
             cross_attn_cond_mask = cross_attn_cond_mask.bool()
 
@@ -376,6 +377,7 @@ class DiffusionTransformer(nn.Module):
                 global_embed=batch_global_cond,
                 prepend_cond=batch_prepend_cond,
                 prepend_cond_mask=batch_prepend_cond_mask,
+                film_cond=film_cond,
                 return_info=return_info,
                 controlnet_embeds=batch_controlnet_embeds,
                 **kwargs)
@@ -409,6 +411,7 @@ class DiffusionTransformer(nn.Module):
                 global_embed=global_embed,
                 prepend_cond=prepend_cond,
                 prepend_cond_mask=prepend_cond_mask,
+                film_cond=film_cond,
                 mask=mask,
                 controlnet_embeds=controlnet_embeds,
                 return_info=return_info,

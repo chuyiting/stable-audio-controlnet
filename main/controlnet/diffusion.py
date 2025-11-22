@@ -133,7 +133,6 @@ class DiTFiLMWrapper(ConditionedDiffusionModel):
         **kwargs
     ):
         super().__init__(supports_cross_attention=True, supports_global_cond=True, supports_input_concat=False)
-        print('DitFiLMWrapper')
         self.model = DiffusionTransformer(use_film=True, *args, **kwargs)
 
     def forward(self,
@@ -157,7 +156,7 @@ class DiTFiLMWrapper(ConditionedDiffusionModel):
                 scale_phi: float = 0.0,
                 **kwargs):
 
-
+        print('DiTFiLMWrapper')
         return self.model(
             x,
             t,
@@ -355,7 +354,6 @@ class ConditionedFiLMDiffusionModelWrapper(nn.Module):
         self.prepend_cond_ids = prepend_cond_ids
         self.film_cond_ids = film_cond_ids
         self.min_input_length = min_input_length
-        print('ConditionedFiMDiffusionModelWrapper')
 
     def get_conditioning_inputs(self, conditioning_tensors: tp.Dict[str, tp.Any], negative=False):
         cross_attention_input = None
@@ -453,6 +451,7 @@ class ConditionedFiLMDiffusionModelWrapper(nn.Module):
             }
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond: tp.Dict[str, tp.Any], **kwargs):
+        print('ConditionedFiLMDiffusionModelWrapper')
         conditioning_inputs = self.get_conditioning_inputs(cond)
         return self.model(x, t, **conditioning_inputs, **kwargs)
 
