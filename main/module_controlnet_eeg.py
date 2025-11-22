@@ -88,7 +88,9 @@ class Model(pl.LightningModule):
                     print(name)
                     param.requires_grad_(True)
         
-        print("Trainable parameters", sum(p.numel() for p in train_params), "params")
+        for p in self.model.parameters():
+            if p.requires_grad:
+                print(f"trainable param : {p}") 
 
 
     def configure_optimizers(self): 
