@@ -211,8 +211,6 @@ class DiffusionTransformer(nn.Module):
         # TODO clean this up
         # we are assuming global cond is always prepend!!!
         if film_cond is not None:
-            print('use film!!!')
-            print(f"film cond shape: {film_cond.shape}")
             extra_args["global_cond"] = film_cond
 
         if self.patch_size > 1:
@@ -275,7 +273,6 @@ class DiffusionTransformer(nn.Module):
 
         assert causal == False, "Causal mode is not supported for DiffusionTransformer"
 
-        print("DiffusionTransformer")
         if cross_attn_cond_mask is not None:
             cross_attn_cond_mask = cross_attn_cond_mask.bool()
 

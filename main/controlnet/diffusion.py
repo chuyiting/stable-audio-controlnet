@@ -156,7 +156,6 @@ class DiTFiLMWrapper(ConditionedDiffusionModel):
                 scale_phi: float = 0.0,
                 **kwargs):
 
-        print('DiTFiLMWrapper')
         return self.model(
             x,
             t,
@@ -451,7 +450,6 @@ class ConditionedFiLMDiffusionModelWrapper(nn.Module):
             }
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond: tp.Dict[str, tp.Any], **kwargs):
-        print('ConditionedFiLMDiffusionModelWrapper')
         conditioning_inputs = self.get_conditioning_inputs(cond)
         return self.model(x, t, **conditioning_inputs, **kwargs)
 
