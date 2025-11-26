@@ -224,7 +224,7 @@ class DEAPStableAudioDataset(Dataset):
         audio_sr: int = 44_100,
         seed: int = 42,
         use_prompt: bool = True,
-        preprocess_audio_path: str = None,
+        use_preprocessed_audio: bool = True,
         # Train Test split
         split_ratio: float = 0.9,
         split: str = 'train' # or val
@@ -240,14 +240,10 @@ class DEAPStableAudioDataset(Dataset):
         self.use_prompt = use_prompt
         self.use_biot_ch = use_biot_ch
         self.biot_dim = biot_dim
+        self.use_preprocessed_audio = use_preprocessed_audio
 
         # Directories
-        if preprocess_audio_path is not None:
-            self.dir_audio = preprocess_audio_path
-            self.use_preprocessed_audio = True
-        else:
-            self.dir_audio = os.path.join(self.root, 'audio')
-            self.use_preprocessed_audio = False
+        self.dir_audio = os.path.join(self.root, 'audio')
         self.dir_dat = os.path.join(self.root, 'data_preprocessed_python')
         if not os.path.isdir(self.dir_audio):
             raise FileNotFoundError(f"Audio folder not found: {self.dir_audio}")
@@ -432,6 +428,7 @@ def create_deap_dataset(
     path: str,
     chunk_dur_s: float = 47.55446713,
     chunk_overlap_s: float = 2.0,
+    use_preprocessed_audio: bool = True,
     eeg_sr: int = 128,
     use_biot_ch: bool = True,
     biot_dim: int=18,
@@ -453,6 +450,7 @@ def create_deap_dataset(
         drop_baseline_3s=drop_baseline_3s,
         audio_sr=audio_sr,
         seed=seed,
+        use_preprocessed_audio=use_preprocessed_audio,
         use_prompt=use_prompt,
         split_ratio=split_ratio,
         split=split
