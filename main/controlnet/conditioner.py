@@ -52,7 +52,7 @@ class EEGConditioner(nn.Module):
         # biot encoder
         self.emb_size = emb_size
 
-        self.latent_rate_hz = self.latent_rate_hz
+        self.latent_rate_hz = latent_rate_hz
         self.duration_s = float(duration_s)
 
         assert duration_s > 0 or use_film, "Either duration_s must be positive."
