@@ -17,7 +17,7 @@ class EEGConditioner(nn.Module):
     def __init__(
         self,
         output_dim: int,
-        ckpt_path: str,
+        ckpt_path: str = None,
         n_channels: int = 32,
         duration_s: float = 10.0,
         project_to_T: bool = True,  
