@@ -55,8 +55,8 @@ class EEGConditioner(nn.Module):
         self.duration_s = float(duration_s)
 
         assert duration_s > 0 or use_film, "Either duration_s must be positive."
-        self.T_latent = int(round(self.duration_s * self.latent_rate_hz))
-        self.T_eeg = int(round(self.duration_s * eeg_freq))
+        self.T_latent = int(self.duration_s * self.latent_rate_hz)
+        self.T_eeg = int(self.duration_s * eeg_freq)
 
         # Initialize BIOT Encoder
         if self.encoder_type == 'eegnet':
@@ -172,14 +172,11 @@ class EEGConditioner(nn.Module):
 
         B = x.shape[0]
 
-        print(f"before encoder: {x.shape}")
         eeg_embedding = self.encoder(x) # (B, emb_size) or (B, T_latent, embed_size)
-        print(f"after encoder: {eeg_embedding.shape}")
         eeg_embedding = self.post_encoder_norm(eeg_embedding)
 
         # Project to (B, output_dim * T_latent) or (B, output_dim) or (B, T_latent, output_dim)
         projected = self.projector(eeg_embedding)  
-        print(f"after projector: {projected.shape}")
 
         if self.use_film:
             output = projected.view(B, self.output_dim)
@@ -189,7 +186,6 @@ class EEGConditioner(nn.Module):
             output = projected.permute(0, 2, 1)  # (B, output_dim, T_latent)
         else:
             output = projected.view(B, self.output_dim, 1)
-        print(f"final output: {output.shape}")
 
         if self.project_to_T:
             mask = torch.ones(
