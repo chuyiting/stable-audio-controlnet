@@ -10,90 +10,102 @@ if BIOT_PATH not in sys.path:
     sys.path.append(BIOT_PATH)
 
 from model.biot import BIOTEncoder
-
-# NOTE: For testing without stable_audio_tools, we inherit from nn.Module
-# When stable_audio_tools is installed, uncomment the following lines:
-# from stable_audio_tools.models.conditioners import Conditioner
-# class EEGConditioner(Conditioner):
-#     def __init__(self, ...):
-#         super().__init__(output_dim, output_dim)  # Use this instead of super().__init__()
+from main.controlnet.eegnet import EEGNet
 
 class EEGConditioner(nn.Module):
-    """
-    EEG Conditioner that uses BIOT encoder to transform EEG signals into
-    time-resolved conditioning embeddings for Stable Audio / ControlNet.
-
-    Architecture:
-        1. BIOTEncoder: (B, n_channels, T_eeg) -> (B, emb_size)
-        2. Projector: (B, emb_size) -> (B, output_dim * T_latent)
-        3. Reshape: (B, output_dim * T_latent) -> (B, output_dim, T_latent)
-
-    Args:
-        output_dim: Output channel dimension for controlnet conditioning
-                    (typically latent_dim from pretransform).
-        ckpt_path: Path to pretrained BIOT checkpoint (.ckpt file).
-        n_channels: Number of EEG channels (default: 16).
-        emb_size: BIOT embedding dimension (default: 256).
-        heads: Number of attention heads in BIOT (default: 8).
-        depth: Number of transformer layers in BIOT (default: 4).
-        n_fft: FFT size for STFT in BIOT (default: 200).
-        hop_length: Hop length for STFT in BIOT (default: 100).
-        duration_s: Audio duration in seconds. Used with a fixed latent rate
-                    (21.5 Hz) to compute the latent time length.
-    """
 
     def __init__(
         self,
         output_dim: int,
         ckpt_path: str,
-        n_channels: int = 16,
+        n_channels: int = 32,
+        duration_s: float = 10.0,
+        project_to_T: bool = True,  
+        use_film: bool = False,
+        encoder_type: str = 'eegnet',  # 'biot' or 'eegnet'
+        post_norm: bool = True,
+        # EEGNet parameters
+        eeg_freq: int = 128,
+        kernel_1: int = 64,
+        kernel_2: int = 16,
+        F1: int = 8,
+        F2: int = 16,
+        D: int = 2,
+        # BIOT parameters
         emb_size: int = 256,
         heads: int = 8,
         depth: int = 4,
         n_fft: int = 200,
         hop_length: int = 100,
-        duration_s: float = -1,  
-        use_film: bool = False 
+        # Stable Audio Open specific
+        latent_rate_hz: float = 21.5,
     ):
         super().__init__()
+        if use_film:
+            assert project_to_T == False, "When using FiLM, project_to_T must be False."
 
         self.output_dim = output_dim
-        self.emb_size = emb_size
         self.n_channels = n_channels
         self.use_film = use_film
+        self.project_to_T = project_to_T
 
-        # Stable Audio Open latent rate (approx)
-        self.latent_rate_hz = 21.5
+        # biot encoder
+        self.emb_size = emb_size
+
+        self.latent_rate_hz = self.latent_rate_hz
         self.duration_s = float(duration_s)
 
-        if self.duration_s > 0 and not use_film:
-            self.T_latent = int(round(self.duration_s * self.latent_rate_hz))
-        else:
-            self.T_latent = -1 
+        assert duration_s > 0 or use_film, "Either duration_s must be positive."
+        self.T_latent = int(round(self.duration_s * self.latent_rate_hz))
+        self.T_eeg = int(round(self.duration_s * eeg_freq))
 
         # Initialize BIOT Encoder
-        self.encoder = BIOTEncoder(
-            emb_size=emb_size,
-            heads=heads,
-            depth=depth,
-            n_channels=n_channels,
-            n_fft=n_fft,
-            hop_length=hop_length,
-        )
+        if self.encoder_type == 'eegnet':
+            self.encoder = EEGNet(
+                chunk_size=self.T_eeg,
+                num_electrodes=n_channels,
+                F1=F1,
+                F2=F2,
+                D=D,
+                kernel_1=kernel_1,
+                kernel_2=kernel_2,
+                dropout=0.25,
+                duration_s=duration_s,
+                latent_rate_hz=self.latent_rate_hz,
+                keep_time_dim=self.project_to_T,
+                time_last=False
+            )
+            self.emb_size = F2 if self.project_to_T else self.encoder.feature_dim() 
+            assert post_norm == False, "For EEGNet encoder, post_norm must be False."
+        else:
+            self.encoder = BIOTEncoder(
+                emb_size=emb_size,
+                heads=heads,
+                depth=depth,
+                n_channels=n_channels,
+                n_fft=n_fft,
+                hop_length=hop_length,
+            )
+            self.emb_size = emb_size
 
         # Load pretrained weights if checkpoint path is provided
         if ckpt_path and os.path.exists(ckpt_path):
             self._load_pretrained_weights(ckpt_path)
         elif ckpt_path:
             print(f"Warning: Checkpoint path provided but file not found: {ckpt_path}")
+        
+        if not ckpt_path:
+            print("No checkpoint path provided; using randomly initialized encoder weights.")
 
-        self.post_encoder_norm = nn.LayerNorm(emb_size)
+        if post_norm:
+            self.post_encoder_norm = nn.LayerNorm(self.emb_size)
+        else:
+            self.post_encoder_norm = nn.Identity()
 
-        # Projection layer:
-        #   (B, emb_size) -> (B, output_dim * T_latent)
-        if self.T_latent > 0:
+        # eegnet keeps the time dimension, so no need to project to T_latent
+        if self.project_to_T and not self.encoder_type == 'eegnet':
             self.projector = nn.Sequential(
-                nn.Linear(emb_size, output_dim * 2),
+                nn.Linear(self.emb_size, self.output_dim * 2),
                 nn.GELU(),
                 nn.Dropout(0.1),
                 nn.Linear(output_dim * 2, output_dim * self.T_latent),
@@ -143,9 +155,7 @@ class EEGConditioner(nn.Module):
             output: Conditioning tensor of shape (B, output_dim, T_latent)
             mask:   Mask tensor of shape (B, T_latent)
         """
-        # Convert list of tensors to batched tensor
         if isinstance(x, list):
-            # Expect list length B, each (1, n_channels, T_eeg) or (n_channels, T_eeg)
             x = torch.cat(
                 [
                     t if t.dim() == 3 else t.unsqueeze(0)
@@ -155,30 +165,29 @@ class EEGConditioner(nn.Module):
             )  # (B, n_channels, T_eeg)
         elif isinstance(x, torch.Tensor):
             if x.dim() == 2:
-                # Single sample: (n_channels, T_eeg) -> (1, n_channels, T_eeg)
                 x = x.unsqueeze(0)
-            # if dim == 3, assume (B, n_channels, T_eeg)
 
         if device is not None:
             x = x.to(device)
 
         B = x.shape[0]
 
-        # BIOT Encoder: (B, n_channels, T_eeg) -> (B, emb_size)
-        eeg_embedding = self.encoder(x)
+        eeg_embedding = self.encoder(x) # (B, emb_size) or (B, T_latent, embed_size)
         eeg_embedding = self.post_encoder_norm(eeg_embedding)
 
-        # Project to (B, output_dim * T_latent)
-        projected = self.projector(eeg_embedding)  # (B, output_dim * T_latent)
+        # Project to (B, output_dim * T_latent) or (B, output_dim) or (B, T_latent, output_dim)
+        projected = self.projector(eeg_embedding)  
 
         if self.use_film:
             output = projected.view(B, self.output_dim)
-        elif self.T_latent > 0: 
+        elif self.project_to_T and projected.dim() == 2: 
             output = projected.view(B, self.output_dim, self.T_latent)
+        elif self.project_to_T and projected.dim() == 3:
+            output = projected.permute(0, 2, 1)  # (B, output_dim, T_latent)
         else:
             output = projected.view(B, self.output_dim, 1)
 
-        if self.T_latent > 0:
+        if self.ect_to_T:
             mask = torch.ones(
                 B,
                 self.T_latent,
@@ -193,3 +202,4 @@ class EEGConditioner(nn.Module):
             )
 
         return output, mask
+

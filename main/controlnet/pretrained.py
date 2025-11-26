@@ -7,7 +7,7 @@ from stable_audio_tools.inference.sampling import get_alphas_sigmas
 from stable_audio_tools.models.utils import load_ckpt_state_dict
 
 from main.controlnet.factory import create_model_from_config
-from main.controlnet.conditioner import EEGConditioner
+from main.controlnet.conditioner import EEGCondtioner
 
 from huggingface_hub import hf_hub_download
 
@@ -16,9 +16,7 @@ from huggingface_hub import hf_hub_download
 def get_pretrained_controlnet_model(name: str,
                                     controlnet_types : List[str],
                                     depth_factor=0.5,
-                                    eeg_ch=18,
-                                    eeg_ckpt_path='',
-                                    duration_s=-1.0):
+                                    eeg_conditioner = None):
     model_config_path = hf_hub_download(name, filename="model_config.json", repo_type='model')
 
     with open(model_config_path) as f:
@@ -54,7 +52,8 @@ def get_pretrained_controlnet_model(name: str,
 
     # EEG conditioner does not exist, we need to manually create and add to it
     if 'eeg' in controlnet_types:
-        eeg_conditioner = EEGConditioner(model_config["model"]['io_channels'],eeg_ckpt_path, n_channels = eeg_ch, duration_s=duration_s)
+        assert eeg_conditioner is not None, "eeg_conditioner must be provided if 'eeg' is in controlnet_types"
+        assert eeg_conditioner.use_film == False, "eeg_conditioner.use_film must be False for controlnet model"
         model.conditioner.conditioners['eeg'] = eeg_conditioner
 
     # Try to download the model.safetensors file first, if it doesn't exist, download the model.ckpt file
@@ -76,9 +75,7 @@ def get_pretrained_controlnet_model(name: str,
 
     return model, model_config
 
-def get_pretrained_film_model(name: str,
-                                eeg_ch=18,
-                                eeg_ckpt_path=''):
+def get_pretrained_film_model(name: str, eeg_conditioner = None):
     model_config_path = hf_hub_download(name, filename="model_config.json", repo_type='model')
 
     with open(model_config_path) as f:
@@ -105,7 +102,8 @@ def get_pretrained_film_model(name: str,
     model = create_model_from_config(model_config)
 
     # EEG conditioner does not exist, we need to manually create and add to it
-    eeg_conditioner = EEGConditioner(model_config["model"]["diffusion"]["config"]["global_cond_dim"], eeg_ckpt_path, n_channels = eeg_ch, duration_s=-1, use_film=True)
+    assert eeg_conditioner is not None, "eeg_conditioner must be provided for film model"
+    assert eeg_conditioner.use_film == True, "eeg_conditioner.use_film must be True for film model"
     model.conditioner.conditioners['eeg'] = eeg_conditioner
 
 

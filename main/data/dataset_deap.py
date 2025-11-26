@@ -135,6 +135,7 @@ def _read_audio_segment(path: str, start_sec: float, dur_sec: float, target_sr: 
     Load [start_sec, start_sec + dur_sec) from a WAV file using torchaudio,
     resample to target_sr, return (C, T) float32. Raises on out-of-bounds or short audio.
     """
+    PEAK_LEVEL = 0.98
     wav_t, sr = torchaudio.load(path)  # (C, N) float32
     if force_stereo and wav_t.shape[0] == 1:
         wav_t = wav_t.expand(2, -1)  # duplicate mono if necessary
@@ -172,6 +173,10 @@ def _read_audio_segment(path: str, start_sec: float, dur_sec: float, target_sr: 
         )
     elif window.shape[1] > n_tgt:
         window = window[:, :n_tgt]
+    
+    peak_val = window.abs().max()
+    if peak_val > 0:
+        window = window * (PEAK_LEVEL / peak_val)
 
     return window.numpy().astype(np.float32, copy=False)
 
@@ -219,6 +224,7 @@ class DEAPStableAudioDataset(Dataset):
         audio_sr: int = 44_100,
         seed: int = 42,
         use_prompt: bool = True,
+        preprocess_audio_path: str = None,
         # Train Test split
         split_ratio: float = 0.9,
         split: str = 'train' # or val
@@ -236,7 +242,12 @@ class DEAPStableAudioDataset(Dataset):
         self.biot_dim = biot_dim
 
         # Directories
-        self.dir_audio = os.path.join(self.root, 'audio')
+        if preprocess_audio_path is not None:
+            self.dir_audio = preprocess_audio_path
+            self.use_preprocessed_audio = True
+        else:
+            self.dir_audio = os.path.join(self.root, 'audio')
+            self.use_preprocessed_audio = False
         self.dir_dat = os.path.join(self.root, 'data_preprocessed_python')
         if not os.path.isdir(self.dir_audio):
             raise FileNotFoundError(f"Audio folder not found: {self.dir_audio}")
@@ -261,10 +272,11 @@ class DEAPStableAudioDataset(Dataset):
             except Exception:
                 continue
             stem = os.path.splitext(jp)[0]
-            a_path = f'{stem}.wav'
+            a_path = f'{stem}_cropped.wav'
            
             deap_block = meta.get('deap', {}) or {}
-            hstart = float(deap_block.get('Highlight_start', 0) or 0)
+            
+            hstart = 0 if self.use_preprocessed_audio else float(deap_block.get('Highlight_start', 0.0) or 0.0)
             self.experiments[exp_id] = {
                 'json': jp,
                 'audio': a_path,

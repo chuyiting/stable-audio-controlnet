@@ -12,8 +12,7 @@ from main.controlnet.pretrained import get_pretrained_controlnet_model, get_pret
 from stable_audio_tools.inference.sampling import get_alphas_sigmas
 from torch.utils.data import DataLoader
 from main.utils import log_wandb_audio_batch, log_wandb_audio_spectrogram,  log_wandb_eeg_batch
-
-
+from main.controlnet.conditioner import EEGConditioner
 
 
 """ Model """
@@ -26,13 +25,11 @@ class Model(pl.LightningModule):
         lr_beta2: float,
         lr_eps: float,
         lr_weight_decay: float,
+        fg_dropout_prob: float,
         depth_factor: float,
-        cfg_dropout_prob: float,
-        eeg_ch: int,
-        eeg_ckpt_path: str,
         freeze_eeg_encoder: bool,
-        duration_s: float,
-        use_film: bool = False
+        use_film: bool,
+        eeg_conditioner: EEGConditioner,
     ):
         super().__init__()
         self.lr = lr
@@ -47,15 +44,12 @@ class Model(pl.LightningModule):
         self.diffusion_objective = "v"
         if use_film:
             model, model_config = get_pretrained_film_model("stabilityai/stable-audio-open-1.0",
-                                                                eeg_ch=eeg_ch,
-                                                                eeg_ckpt_path=eeg_ckpt_path)
+                                                            eeg_conditioner = conditioner)
         else:
             model, model_config = get_pretrained_controlnet_model("stabilityai/stable-audio-open-1.0",
                                                                 controlnet_types=["eeg"],
                                                                 depth_factor=depth_factor,
-                                                                eeg_ch=eeg_ch,
-                                                                eeg_ckpt_path=eeg_ckpt_path,
-                                                                duration_s=duration_s)
+                                                                eeg_conditioner=eeg_conditioner)
                                                                 
         self.model_config = model_config
         self.sample_size = model_config["sample_size"]
