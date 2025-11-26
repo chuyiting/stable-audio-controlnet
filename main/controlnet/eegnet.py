@@ -124,7 +124,7 @@ class EEGNet(nn.Module):
         self.keep_time_dim = keep_time_dim
 
         if duration_s is not None and latent_rate_hz is not None:
-            self.target_T = int(round(float(duration_s) * float(latent_rate_hz)))
+            self.target_T = int(float(duration_s) * float(latent_rate_hz))
         else:
             self.target_T = None
 
