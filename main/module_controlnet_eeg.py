@@ -44,7 +44,7 @@ class Model(pl.LightningModule):
         self.diffusion_objective = "v"
         if use_film:
             model, model_config = get_pretrained_film_model("stabilityai/stable-audio-open-1.0",
-                                                            eeg_conditioner = conditioner)
+                                                            eeg_conditioner = eeg_conditioner)
         else:
             model, model_config = get_pretrained_controlnet_model("stabilityai/stable-audio-open-1.0",
                                                                 controlnet_types=["eeg"],
