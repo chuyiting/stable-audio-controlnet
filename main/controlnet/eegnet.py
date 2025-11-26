@@ -33,7 +33,7 @@
 
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 class Conv2dWithConstraint(nn.Conv2d):
     def __init__(self, *args, max_norm: int = 1, **kwargs):
