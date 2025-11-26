@@ -25,7 +25,7 @@ class Model(pl.LightningModule):
         lr_beta2: float,
         lr_eps: float,
         lr_weight_decay: float,
-        fg_dropout_prob: float,
+        cfg_dropout_prob: float,
         depth_factor: float,
         freeze_eeg_encoder: bool,
         use_film: bool,
