@@ -48,6 +48,8 @@ class EEGConditioner(nn.Module):
         self.n_channels = n_channels
         self.use_film = use_film
         self.project_to_T = project_to_T
+        self.encoder_type = encoder_type
+        self.post_norm = post_norm
 
         # biot encoder
         self.emb_size = emb_size
@@ -187,7 +189,7 @@ class EEGConditioner(nn.Module):
         else:
             output = projected.view(B, self.output_dim, 1)
 
-        if self.ect_to_T:
+        if self.project_to_T:
             mask = torch.ones(
                 B,
                 self.T_latent,
