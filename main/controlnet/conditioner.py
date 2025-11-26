@@ -51,9 +51,6 @@ class EEGConditioner(nn.Module):
         self.encoder_type = encoder_type
         self.post_norm = post_norm
 
-        # biot encoder
-        self.emb_size = emb_size
-
         self.latent_rate_hz = latent_rate_hz
         self.duration_s = float(duration_s)
 
@@ -104,7 +101,6 @@ class EEGConditioner(nn.Module):
         else:
             self.post_encoder_norm = nn.Identity()
 
-        print(f"self.embed_size: {self.emb_size}")
         # eegnet keeps the time dimension, so no need to project to T_latent
         if self.project_to_T and not self.encoder_type == 'eegnet':
             self.projector = nn.Sequential(
@@ -115,13 +111,12 @@ class EEGConditioner(nn.Module):
             )
         else: 
             self.projector = nn.Sequential(
-                nn.Linear(emb_size, output_dim * 2),
+                nn.Linear(self.emb_size, output_dim * 2),
                 nn.GELU(),
                 nn.Dropout(0.1),
                 nn.Linear(output_dim * 2, output_dim),
             )
 
-        print(self.projector)
 
     def _load_pretrained_weights(self, ckpt_path: str):
         """Load pretrained BIOT weights from checkpoint."""
