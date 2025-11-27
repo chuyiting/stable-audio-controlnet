@@ -223,7 +223,7 @@ class DEAPStableAudioDataset(Dataset):
         # Audio
         audio_sr: int = 44_100,
         seed: int = 42,
-        use_prompt: bool = True,
+        use_prompt: bool = False,
         use_preprocessed_audio: bool = True,
         # Train Test split
         split_ratio: float = 0.9,
@@ -408,18 +408,20 @@ class DEAPStableAudioDataset(Dataset):
         with open(x.audio_json, 'r', encoding='utf-8') as f:
             meta = json.load(f)
         deap_block = meta.get('deap', {}) or {}
-        if self.use_prompt:
-            prompt = _default_prompt(deap_block, ratings)
-        else:
-            prompt = ''
+        prompt = _default_prompt(deap_block, ratings)
 
+        v, a, d, l = [float(x) for x in ratings]
         return {
             'eeg': eeg_t,
             'audio': audio_t,
-            'prompt': prompt,
+            'prompt': prompt if self.use_prompt else '',
             # TODO check how is start and total seconds are used!!
             'start_seconds': float(0),
             'total_seconds': float(self.chunk_dur_s),
+            'valence': v,
+            'arousal': a,
+            'dominance': d,
+            'liking': l,
         }
 
 

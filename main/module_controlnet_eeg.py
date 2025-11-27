@@ -269,7 +269,7 @@ class SampleLogger(Callback):
         self,
         sampling_steps: List[int],
         cfg_scale: float,
-        num_samples: int = 1
+        num_samples: int = 3
     ) -> None:
         self.sampling_steps = sampling_steps
         self.cfg_scale = cfg_scale
@@ -307,14 +307,17 @@ class SampleLogger(Callback):
 
         num_samples = min(self.num_samples, eeg.shape[0])
 
+        # sample indices without replacement
+        idx = torch.randperm(eeg.shape[0])[:num_samples].tolist()
+
         conditioning = [{
             "eeg": eeg[i:i+1].to(pl_module.device),
             "prompt": prompts[i],
             "seconds_start": start_seconds[i],
             "seconds_total": total_seconds[i],
-        } for i in range(num_samples)]
+        } for i in idx]
 
-        for i in range(num_samples):
+        for i in idx:
             log_wandb_eeg_batch(
                 logger=wandb_logger,
                 id=f"{run_tag}_true_eeg_{i}",
@@ -325,7 +328,7 @@ class SampleLogger(Callback):
                 ),
             )
 
-        for i in range(num_samples):
+        for i in idx:
             log_wandb_audio_batch(
                 logger=wandb_logger,
                 id=f"{run_tag}_gt_audio_{i}",
@@ -354,21 +357,20 @@ class SampleLogger(Callback):
                 steps=steps,
                 cfg_scale=7.0,
                 conditioning=conditioning,
-                # sample_size=pl_module.sample_size,
                 sample_size=sample_size,
                 sigma_min=0.3,
                 sigma_max=500,
                 sampler_type="dpmpp-3m-sde",
-                device="cuda",  # or pl_module.device
+                device="cuda",
             )
 
-            for i in range(num_samples):
+            for j, i in enumerate(idx):
                 sample_id = f"{run_tag}_sample_x_{i}_steps{steps}"
 
                 log_wandb_audio_batch(
                     logger=wandb_logger,
                     id=sample_id,
-                    samples=output[i:i+1],
+                    samples=output[j:j+1],   # ✅ use j here
                     sampling_rate=pl_module.sample_rate,
                     caption=(
                         f"[{run_tag}] Sampled in {steps} steps | "
@@ -378,7 +380,7 @@ class SampleLogger(Callback):
                 log_wandb_audio_spectrogram(
                     logger=wandb_logger,
                     id=sample_id,
-                    samples=output[i:i+1],
+                    samples=output[j:j+1],   # ✅ same
                     sampling_rate=pl_module.sample_rate,
                     caption=(
                         f"[{run_tag}] Sampled in {steps} steps | "
