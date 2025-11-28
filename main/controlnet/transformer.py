@@ -82,7 +82,6 @@ class ContinuousTransformer(nn.Module):
             "hidden_states": [],
         }
 
-        print(f"ContinuousTransformer input shape: {x.shape}")
         x = self.project_in(x)
 
         if prepend_embeds is not None:

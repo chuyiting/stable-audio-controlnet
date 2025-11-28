@@ -156,7 +156,6 @@ class DiTFiLMWrapper(ConditionedDiffusionModel):
                 scale_phi: float = 0.0,
                 **kwargs):
 
-        print(f"Dit FiLM input shape: {x.shape}")
         return self.model(
             x,
             t,
