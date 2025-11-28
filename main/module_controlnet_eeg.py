@@ -305,10 +305,12 @@ class SampleLogger(Callback):
         # TODO make magic number flexible
         sample_size = int((x_audio.shape[2] / 44100) * 21.5 * 2048)
 
+        print(f"num samples: {self.num_samples}, batch eeg shape: {eeg.shape}, audio shape: {x_audio.shape}")
         num_samples = min(self.num_samples, eeg.shape[0])
 
         # sample indices without replacement
         idx = torch.randperm(eeg.shape[0])[:num_samples].tolist()
+        print(f"sampled indices: {idx}")
 
         conditioning = [{
             "eeg": eeg[i:i+1].to(pl_module.device),
@@ -316,6 +318,8 @@ class SampleLogger(Callback):
             "seconds_start": start_seconds[i],
             "seconds_total": total_seconds[i],
         } for i in idx]
+
+        print(f"conditioning length: {len(conditioning)}")
 
         for i in idx:
             log_wandb_eeg_batch(
