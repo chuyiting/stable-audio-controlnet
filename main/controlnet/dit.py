@@ -320,6 +320,11 @@ class DiffusionTransformer(nn.Module):
             else:
                 batch_input_concat_cond = None
 
+            if film_cond is not None:
+                batch_film_cond = torch.cat([film_cond, film_cond], dim=0)
+            else:
+                batch_film_cond = None
+
             batch_cond = None
             batch_cond_masks = None
 
@@ -375,7 +380,7 @@ class DiffusionTransformer(nn.Module):
                 global_embed=batch_global_cond,
                 prepend_cond=batch_prepend_cond,
                 prepend_cond_mask=batch_prepend_cond_mask,
-                film_cond=film_cond,
+                film_cond=batch_film_cond,
                 return_info=return_info,
                 controlnet_embeds=batch_controlnet_embeds,
                 **kwargs)
