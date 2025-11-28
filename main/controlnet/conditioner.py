@@ -200,6 +200,8 @@ class EEGConditioner(nn.Module):
                 device=output.device,
                 dtype=torch.float32,
             )
+        
+        print(f"EEGConditioner output shape: {output.shape}, mask shape: {mask.shape}")
 
         return output, mask
 

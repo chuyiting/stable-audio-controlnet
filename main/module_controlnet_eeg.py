@@ -370,7 +370,7 @@ class SampleLogger(Callback):
                 log_wandb_audio_batch(
                     logger=wandb_logger,
                     id=sample_id,
-                    samples=output[j:j+1],   # ✅ use j here
+                    samples=output[j:j+1],   
                     sampling_rate=pl_module.sample_rate,
                     caption=(
                         f"[{run_tag}] Sampled in {steps} steps | "
@@ -380,7 +380,7 @@ class SampleLogger(Callback):
                 log_wandb_audio_spectrogram(
                     logger=wandb_logger,
                     id=sample_id,
-                    samples=output[j:j+1],   # ✅ same
+                    samples=output[j:j+1],   
                     sampling_rate=pl_module.sample_rate,
                     caption=(
                         f"[{run_tag}] Sampled in {steps} steps | "
