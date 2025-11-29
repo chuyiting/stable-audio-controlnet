@@ -20,20 +20,20 @@ import soundfile as sf
 import math
 
 """
-preprocessed DEAP channels 
-source: https://www.eecs.qmul.ac.uk/mmv/datasets/deap/readme.html
+Dally channels 
 """
-DEAP_CHANNELS = [
-    "Fp1", "AF3", "F3", "F7", "FC5", "FC1", "C3", "T7",
-    "CP5", "CP1", "P3", "P7", "PO3", "O1", "Oz", "Pz",
-    "Fp2", "AF4", "Fz", "F4", "F8", "FC6", "FC2", "Cz",
-    "C4", "T8", "CP6", "CP2", "P4", "P8", "PO4", "O2",
+DALLY_CHANNELS = [
+    "Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4",
+    "O1", "O2", "F7", "F8", "T7", "T8", "P7", "P8",
+    "Fz", "Cz", "Pz", "Oz", "FC1", "FC2", "CP1", "CP2",
+    "FC5", "FC6", "CP5", "CP6", "TP9", "TP10", "POz", "ECG",
+    "ft_valance", "ft_arousal",
 ]
 
 """
 BIOT channels
 https://github.com/ycq091044/BIOT/blob/main/datasets/TUAB/process.py
-Assumption: A1, A2 = 0
+Assumption: A1, A2 = 0 for EEG
 """
 BIOT_PAIRS = [
     "FP1-F7", "F7-T7", "T7-P7", "P7-O1",
@@ -43,12 +43,12 @@ BIOT_PAIRS = [
     "C3", "C4"
 ]
 
-DEAP_IDX = {ch.upper(): i for i, ch in enumerate(DEAP_CHANNELS)}
+DALLY_IDX = {ch.upper(): i for i, ch in enumerate(DALLY_CHANNELS)}
 
 
-def _deap_to_biot_bipolar(eeg, dim: int = 16):
+def _dally_to_biot_bipolar(eeg, dim: int = 16):
     """
-    Convert DEAP 32-channel EEG to BIOT bipolar montage.
+    Convert Dally 32-channel EEG to BIOT bipolar montage.
 
     Parameters
     ----------
@@ -80,14 +80,14 @@ def _deap_to_biot_bipolar(eeg, dim: int = 16):
         # Bipolar pair: "A-B"
         if "-" in pair:
             a_name, b_name = pair.split("-")
-            a_idx = DEAP_IDX[a_name.upper()]
-            b_idx = DEAP_IDX[b_name.upper()]
+            a_idx = DALLY_IDX[a_name.upper()]
+            b_idx = DALLY_IDX[b_name.upper()]
             a_sig = data.select(dim=-2, index=a_idx)
             b_sig = data.select(dim=-2, index=b_idx)
             eeg_bipolar[..., k, :] = a_sig - b_sig
         else:
             # Monopolar channel: e.g., "C3" or "C4"
-            ch_idx = DEAP_IDX[pair.upper()]
+            ch_idx = DALLY_IDX[pair.upper()]
             ch_sig = data.select(dim=-2, index=ch_idx)
             eeg_bipolar[..., k, :] = ch_sig
 
@@ -210,10 +210,10 @@ class DallyStableAudioDataset(Dataset):
         use_biot_ch: bool = True,
         biot_dim: int = 18,
         # Audio
-        audio_sr: int = 44_100,
-        use_classical_only: bool = False,
+        audio_sr: int = 44100,
+        use_classical_only: bool = True,
         # Tasks
-        allowed_tasks: Sequence[str] = ("musicFt",),
+        allowed_tasks: Sequence[str] = ("musicFt"),
         # Train / val split
         seed: int = 42,
         split_ratio: float = 0.9,
@@ -238,7 +238,6 @@ class DallyStableAudioDataset(Dataset):
         if not os.path.isdir(self.dir_meta):
             raise FileNotFoundError(f"Meta folder not found: {self.dir_meta}")
 
-        # Collect meta files
         meta_paths = sorted(glob.glob(os.path.join(self.dir_meta, "*.npy")))
         if not meta_paths:
             raise FileNotFoundError(f"No .npy meta files found in {self.dir_meta}")
@@ -246,16 +245,16 @@ class DallyStableAudioDataset(Dataset):
         # Group meta files by audio_id
         meta_by_audio: Dict[str, List[Dict[str, Any]]] = {}
         for mp in meta_paths:
-            fname = os.path.basename(mp)  # e.g. "0_sub-01_task-musicFt.npy"
+            fname = os.path.basename(mp)  # e.g. "0_sub-01_task-musicFt_trial-22.npy"
             stem, _ = os.path.splitext(fname)
 
-            # Parse pattern: {audio}_sub-{01..21}_task-{task}
-            # crude parsing but robust for the given pattern
+            # Parse pattern: {audio}_sub-{01..21}_task-{task}_trial-{trial}
             try:
                 audio_part, rest = stem.split("_sub-", 1)
-                subj_part, task_part = rest.split("_task-", 1)
+                subj_part, rest = rest.split("_task-", 1)
+                task_part, rest = rest.split("_trial-", 1)
             except ValueError:
-                # Skip unexpected filenames
+                print('unable to parse filename:', fname)
                 continue
 
             audio_id = audio_part
@@ -270,7 +269,7 @@ class DallyStableAudioDataset(Dataset):
 
             audio_path = os.path.join(self.dir_audio, f"{audio_id}.wav")
             if not os.path.isfile(audio_path):
-                # No matching audio; skip this meta file
+                print(f"No matching audio for {fname}")
                 continue
 
             meta_by_audio.setdefault(audio_id, []).append({
@@ -313,6 +312,10 @@ class DallyStableAudioDataset(Dataset):
                 T = arr.shape[0]
                 eeg_dur_sec = T / float(self.eeg_sr)
                 audio_len_sec = _get_audio_len_sec(audio_path)
+                if abs(eeg_dur_sec - audio_len_sec) > 1e-6: 
+                    print(f"[WARN] EEG duration ({eeg_dur_sec:.3f}s) != audio duration ({audio_len_sec:.3f}s) "
+                        f"for file: {audio_path}")
+
                 trial_len_sec = min(eeg_dur_sec, audio_len_sec)
 
                 if trial_len_sec <= 0:
@@ -320,7 +323,7 @@ class DallyStableAudioDataset(Dataset):
 
                 chunk_dur_s = self.chunk_dur_s
                 overlap_s = self.chunk_overlap_s
-                stride_s = max(1e-3, chunk_dur_s - overlap_s)
+                stride_s = chunk_dur_s - overlap_s
 
                 starts: List[float] = []
                 st = 0.0
@@ -356,6 +359,7 @@ class DallyStableAudioDataset(Dataset):
                     ))
 
         rng.shuffle(self._indices)
+        print(f"[INFO] DallyStableAudioDataset initialized with {len(self._indices)} chunks")
 
         if not self._indices:
             raise RuntimeError("No windowed indices created for Dally dataset. "
@@ -388,7 +392,7 @@ class DallyStableAudioDataset(Dataset):
 
         eeg_t = torch.from_numpy(eeg.astype(np.float32))
         if self.use_biot_ch:
-            eeg_t = _deap_to_biot_bipolar(eeg_t, self.biot_dim)
+            eeg_t = _dally_to_biot_bipolar(eeg_t, self.biot_dim)
 
         # Audio window aligned in absolute time
         audio_np = _read_audio_segment(
@@ -406,12 +410,11 @@ class DallyStableAudioDataset(Dataset):
         return {
             "eeg": eeg_t,
             "audio": audio_t,
-            "prompt": "",  # keep structure similar to DEAP dataset
+            "prompt": "",  
             "start_seconds": float(x.start_sec),
             "total_seconds": float(x.dur_sec),
             "valence": v,
             "arousal": a,
-            # no dominance / liking for Dally
         }
 
 
@@ -419,7 +422,7 @@ def create_dally_dataset(
     path: str,
     chunk_dur_s: float = 10.0,
     chunk_overlap_s: float = 2.0,
-    use_classical_only: bool = False,
+    use_classical_only: bool = True,
     eeg_sr: int = 1000,
     use_biot_ch: bool = True,
     biot_dim: int = 18,
@@ -462,19 +465,19 @@ def print_item(ds, idx, should_print: bool):
 
 if __name__ == "__main__":
     # Adjust this path to your actual Dally root
-    root = "/app/mnt/MusicEEGen/data/dally"
+    root = "/app/dally"
 
     ds = create_dally_dataset(
         root,
-        chunk_dur_s=10.0,
-        chunk_overlap_s=2.0,
-        use_classical_only=False,
+        chunk_dur_s=5.0,
+        chunk_overlap_s=1.0,
+        use_classical_only=True,
         split="train",
     )
 
     print(f"Dataset length: {len(ds)}")
     top_n = len(ds)
     for i in range(top_n):
-        # Print every 100th item (similar spirit to dataset_deap)
+        # Print every 100th item (similar spirit to dataset_dally)
         should_print = (i % 100 == 0)
         print_item(ds, i, should_print)
