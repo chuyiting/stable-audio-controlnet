@@ -5,6 +5,7 @@ import json
 import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Callable
+from scipy.signal import resample
 
 import numpy as np
 
@@ -207,6 +208,7 @@ class DallyStableAudioDataset(Dataset):
         chunk_overlap_s: float = 2.0,
         # EEG
         eeg_sr: int = 1000,
+        eeg_sr_ds: int = -1,
         use_biot_ch: bool = True,
         biot_dim: int = 18,
         # Audio
@@ -224,11 +226,15 @@ class DallyStableAudioDataset(Dataset):
         self.chunk_dur_s = float(chunk_dur_s)
         self.chunk_overlap_s = float(chunk_overlap_s)
         self.eeg_sr = int(eeg_sr)
+        self.eeg_sr_ds = int(eeg_sr_ds)
         self.audio_sr = int(audio_sr)
         self.use_biot_ch = bool(use_biot_ch)
         self.biot_dim = int(biot_dim)
         self.use_classical_only = bool(use_classical_only)
         self.allowed_tasks = tuple(allowed_tasks)
+
+        assert self.eeg_sr_ds == -1 or self.eeg_sr_ds < self.eeg_sr, \
+            "eeg_sr_ds must be -1 (no downsample) or less than eeg_sr"
 
         # Directories
         self.dir_audio = os.path.join(self.root, "audio")
@@ -376,6 +382,23 @@ class DallyStableAudioDataset(Dataset):
             self._meta_cache[meta_path] = arr
         return self._meta_cache[meta_path]
 
+    def _downsample_eeg(self, eeg):
+        """
+        eeg: (C, T) numpy array
+        returns: (C, T_ds)
+        """
+        C, T = eeg.shape
+        # ratio between original and target sr
+        factor = self.eeg_sr / self.eeg_sr_ds
+
+        if np.isclose(factor, int(round(factor))):
+            step = int(round(factor))
+            return eeg[:, ::step]
+
+        T_ds = int(round(T * self.eeg_sr_ds / self.eeg_sr))
+        eeg_ds = resample(eeg, T_ds, axis=1)
+        return eeg_ds
+
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         x = self._indices[idx]
 
@@ -389,6 +412,9 @@ class DallyStableAudioDataset(Dataset):
         eeg = eeg_all[:, s:e]              # (32, Teeg)
         val_win = val_series[s:e]
         aro_win = aro_series[s:e]
+
+        if self.eeg_sr_ds != -1 and self.eeg_sr_ds < self.eeg_sr:
+            eeg = self._downsample_eeg(eeg)  # (32, Teeg_ds)
 
         eeg_t = torch.from_numpy(eeg.astype(np.float32))
         if self.use_biot_ch:
@@ -404,8 +430,8 @@ class DallyStableAudioDataset(Dataset):
         audio_t = torch.from_numpy(audio_np.astype(np.float32))  # (2, T_audio) or (C, T)
 
         # Aggregate valence/arousal over the chunk (scalar per item)
-        v = float(np.mean(val_win)) if val_win.size > 0 else 0.0
-        a = float(np.mean(aro_win)) if aro_win.size > 0 else 0.0
+        v = float(np.median(val_win)) if val_win.size > 0 else 0.0
+        a = float(np.median(aro_win)) if aro_win.size > 0 else 0.0
 
         return {
             "eeg": eeg_t,
@@ -424,6 +450,7 @@ def create_dally_dataset(
     chunk_overlap_s: float = 2.0,
     use_classical_only: bool = True,
     eeg_sr: int = 1000,
+    eeg_sr_ds: int = -1,
     use_biot_ch: bool = True,
     biot_dim: int = 18,
     audio_sr: int = 44_100,
@@ -437,6 +464,7 @@ def create_dally_dataset(
         chunk_dur_s=chunk_dur_s,
         chunk_overlap_s=chunk_overlap_s,
         eeg_sr=eeg_sr,
+        eeg_sr_ds=eeg_sr_ds,
         use_biot_ch=use_biot_ch,
         biot_dim=biot_dim,
         audio_sr=audio_sr,
